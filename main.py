@@ -74,13 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
     ai_group.add_argument("--provider", default=config.DEFAULT_LLM_PROVIDER,
                           metavar="PROVIDER",
                           help=f"LLM provider string, e.g. openai/gpt-4o-mini  (default: {config.DEFAULT_LLM_PROVIDER})")
-<<<<<<< HEAD
     ai_group.add_argument("--api-key", default="", metavar="KEY",
                           help="API key for the LLM provider (if omitted, read from env based on --provider)")
-=======
-    ai_group.add_argument("--api-key", default=None, metavar="KEY",
-                          help="API key for the LLM provider (auto-detected from env if not set)")
->>>>>>> c25e62c736ce29ec617ea0e079b55e84dfb5f09f
 
     # CSS-mode specific
     css_group = p.add_argument_group("CSS mode options")
@@ -109,7 +104,6 @@ async def run(args: argparse.Namespace) -> None:
 
     try:
         if args.mode == "ai":
-<<<<<<< HEAD
             api_key = args.api_key or config.get_api_key(args.provider)
 
             if not api_key and "ollama" not in args.provider:
@@ -119,17 +113,6 @@ async def run(args: argparse.Namespace) -> None:
                     file=sys.stderr,
                 )
             llm_cfg = LLMConfig(provider=args.provider, api_token=api_key or "no-token")
-=======
-            # CLI flag takes priority; otherwise auto-detect from the correct env var
-            resolved_key = args.api_key or get_api_key(args.provider)
-            if not resolved_key and "ollama" not in args.provider:
-                print(
-                    f"Warning: no API key found for provider '{args.provider}'.\n"
-                    f"Pass --api-key KEY or add the matching variable to .env.",
-                    file=sys.stderr,
-                )
-            llm_cfg = LLMConfig(provider=args.provider, api_token=resolved_key or "no-token")
->>>>>>> c25e62c736ce29ec617ea0e079b55e84dfb5f09f
             data = await crawl_with_ai(
                 url=args.url,
                 schema=schema,
