@@ -1,0 +1,22 @@
+{
+  "name": "Hacker News Stories",
+  "baseSelector": "tr.athing",
+  "fields": [
+    {
+      "name": "title",
+      "selector": "span.titleline > a",
+      "type": "text"
+    },
+    {
+      "name": "url",
+      "selector": "span.titleline > a",
+      "type": "attribute",
+      "attribute": "href"
+    },
+    {
+      "name": "site",
+      "selector": "span.sitestr",
+      "type": "text"
+    }
+  ]
+}
