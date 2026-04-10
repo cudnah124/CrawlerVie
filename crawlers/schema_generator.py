@@ -29,6 +29,7 @@ async def generate_schema(
     llm_config: LLMConfig,
     output_path: str | Path | None = None,
     headless: bool = HEADLESS,
+    antibot: bool = False,
 ) -> dict:
     """
     Crawl a URL, then ask an LLM to analyze the HTML and produce a
@@ -45,9 +46,21 @@ async def generate_schema(
 
     Returns:
         The generated schema dict, also written to output_path.
+        antibot:     Enable stealth + magic + simulate_user to bypass Cloudflare.
     """
-    browser_cfg = BrowserConfig(headless=headless, verbose=False)
-    run_cfg = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, page_timeout=PAGE_TIMEOUT)
+    browser_cfg = BrowserConfig(
+        headless=headless,
+        enable_stealth=antibot,
+        user_agent_mode="random" if antibot else "",
+        verbose=False,
+    )
+    run_cfg = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        page_timeout=PAGE_TIMEOUT,
+        magic=antibot,
+        simulate_user=antibot,
+        override_navigator=antibot,
+    )
 
     print(f"Fetching {url} …")
     async with AsyncWebCrawler(config=browser_cfg) as crawler:

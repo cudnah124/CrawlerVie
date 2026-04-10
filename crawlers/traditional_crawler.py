@@ -28,6 +28,7 @@ async def crawl_with_selectors(
     wait_for: str | None = None,
     js_code: str | None = None,
     headless: bool = HEADLESS,
+    antibot: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Fetch a page and extract data using CSS selectors defined in `schema`.
@@ -50,6 +51,8 @@ async def crawl_with_selectors(
         js_code:   Optional JS snippet to run before extraction
                    (e.g. scrolling to load lazy content).
         headless:  Run browser headlessly.
+        antibot:   Enable stealth + magic + simulate_user + override_navigator
+                   to bypass Cloudflare and similar protections.
 
     Returns:
         List of dicts, each representing one matched base element.
@@ -60,8 +63,10 @@ async def crawl_with_selectors(
     """
     browser_cfg = BrowserConfig(
         headless=headless,
+        enable_stealth=antibot,
+        user_agent_mode="random" if antibot else "",
         avoid_ads=True,
-        light_mode=True,   # skip images/fonts — faster for selector-only work
+        light_mode=not antibot,  # light_mode conflicts with some stealth scripts
         verbose=False,
     )
     run_cfg = CrawlerRunConfig(
@@ -70,6 +75,9 @@ async def crawl_with_selectors(
         page_timeout=PAGE_TIMEOUT,
         wait_for=wait_for,
         js_code=js_code,
+        magic=antibot,
+        simulate_user=antibot,
+        override_navigator=antibot,
     )
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:

@@ -68,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Path to JSON schema file (uses built-in demo if omitted)")
     p.add_argument("--wait-for", metavar="SELECTOR", default=None,
                    help="CSS selector to wait for before extracting (useful for SPAs)")
+    p.add_argument("--antibot", action="store_true",
+                   help="Enable anti-bot bypass (stealth, magic mode, simulate_user). "
+                        "Use for sites protected by Cloudflare or similar.")
 
     # Shared LLM options (ai + schema-gen)
     llm_group = p.add_argument_group("LLM options (used by 'ai' and 'schema-gen' modes)")
@@ -125,6 +128,7 @@ async def run(args: argparse.Namespace) -> None:
                 query=args.query,
                 llm_config=llm_cfg,
                 output_path=args.schema_output,
+                antibot=args.antibot,
             )
         except RuntimeError as e:
             sys.exit(f"schema-gen error: {e}")
@@ -151,6 +155,7 @@ async def run(args: argparse.Namespace) -> None:
                 instruction=args.instruction,
                 llm_config=llm_cfg,
                 wait_for=args.wait_for,
+                antibot=args.antibot,
             )
 
         else:  # css
@@ -159,6 +164,7 @@ async def run(args: argparse.Namespace) -> None:
                 schema=schema,
                 wait_for=args.wait_for,
                 js_code=args.js,
+                antibot=args.antibot,
             )
 
     except RuntimeError as e:

@@ -25,17 +25,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import HEADLESS, PAGE_TIMEOUT, CHUNK_TOKEN_THRESHOLD
 
 
-def _make_browser_config(headless: bool) -> BrowserConfig:
+def _make_browser_config(headless: bool, antibot: bool) -> BrowserConfig:
     return BrowserConfig(
         headless=headless,
-        enable_stealth=True,
+        enable_stealth=antibot,      # playwright-stealth patches fingerprint APIs
+        user_agent_mode="random" if antibot else "",
         avoid_ads=True,
         verbose=False,
     )
 
 
-def _make_run_config(strategy: LLMExtractionStrategy, wait_for: str | None) -> CrawlerRunConfig:
-    # Use pruning filter so the LLM only sees meaningful text, not boilerplate.
+def _make_run_config(strategy: LLMExtractionStrategy, wait_for: str | None, antibot: bool) -> CrawlerRunConfig:
     pruning_filter = PruningContentFilter(threshold=0.45, threshold_type="fixed")
     markdown_gen = DefaultMarkdownGenerator(content_filter=pruning_filter)
 
@@ -45,6 +45,10 @@ def _make_run_config(strategy: LLMExtractionStrategy, wait_for: str | None) -> C
         markdown_generator=markdown_gen,
         page_timeout=PAGE_TIMEOUT,
         wait_for=wait_for,
+        # anti-bot triad — turns on random UA, navigator override, and human-like mouse events
+        magic=antibot,
+        simulate_user=antibot,
+        override_navigator=antibot,
     )
 
 
@@ -55,6 +59,7 @@ async def crawl_with_ai(
     llm_config: LLMConfig,
     wait_for: str | None = None,
     headless: bool = HEADLESS,
+    antibot: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Fetch a page and extract structured data using an LLM.
@@ -62,17 +67,15 @@ async def crawl_with_ai(
     Args:
         url:         Target URL.
         schema:      Dict describing the fields to extract (Pydantic JSON schema).
-        instruction: Natural language hint for the LLM (e.g. "Extract all products").
+        instruction: Natural language hint for the LLM.
         llm_config:  LLM provider + credentials.
         wait_for:    Optional CSS selector to wait for before extracting.
         headless:    Run browser headlessly.
+        antibot:     Enable stealth mode + magic + simulate_user + override_navigator
+                     to bypass Cloudflare and similar protections.
 
     Returns:
         List of dicts, each representing one extracted item.
-
-    Raises:
-        RuntimeError: If the page could not be fetched.
-        ValueError:   If the LLM response cannot be parsed.
     """
     strategy = LLMExtractionStrategy(
         llm_config=llm_config,
@@ -84,8 +87,8 @@ async def crawl_with_ai(
         verbose=True,
     )
 
-    browser_cfg = _make_browser_config(headless)
-    run_cfg = _make_run_config(strategy, wait_for)
+    browser_cfg = _make_browser_config(headless, antibot)
+    run_cfg = _make_run_config(strategy, wait_for, antibot)
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
         result = await crawler.arun(url=url, config=run_cfg)
