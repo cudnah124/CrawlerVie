@@ -20,11 +20,34 @@ crawlerAI/
 
 ```bash
 pip install -r requirements.txt
-crawl4ai-setup            # cài Playwright browser (~300MB, chỉ chạy một lần)
+# Cách khuyến nghị (ổn định hơn, không phụ thuộc CLI có nằm trong PATH hay không)
+python -c "from crawl4ai.install import post_install; post_install()"
+
+# Nếu máy bạn có sẵn CLI thì vẫn có thể dùng:
+# crawl4ai-setup
+
+# Kiểm tra setup đã OK chưa
+python -c "from crawl4ai.install import doctor; doctor()"
 
 cp .env.example .env
 # Điền OPENAI_API_KEY vào .env (chỉ cần cho mode 'ai')
 ```
+
+### Troubleshooting nhanh (Linux/Devcontainer)
+
+Nếu `doctor()` báo thiếu browser Playwright:
+
+```bash
+python -m playwright install chromium
+```
+
+Nếu báo thiếu shared library (ví dụ: `libatk-1.0.so.0`):
+
+```bash
+python -m playwright install-deps chromium
+```
+
+Nếu `apt` lỗi repo bên thứ 3 (ví dụ Yarn key), tạm disable repo đó rồi chạy lại lệnh trên.
 
 ## Sử dụng
 
