@@ -23,6 +23,7 @@ from crawlers.ai_crawler import crawl_with_ai
 from crawlers.traditional_crawler import crawl_with_selectors
 from exporters.csv_exporter import export_to_csv
 import config
+from config import get_api_key
 
 
 # ── built-in demo schemas (used when --schema is not provided) ────────────────
@@ -73,8 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
     ai_group.add_argument("--provider", default=config.DEFAULT_LLM_PROVIDER,
                           metavar="PROVIDER",
                           help=f"LLM provider string, e.g. openai/gpt-4o-mini  (default: {config.DEFAULT_LLM_PROVIDER})")
-    ai_group.add_argument("--api-key", default=config.DEFAULT_API_KEY, metavar="KEY",
-                          help="API key for the LLM provider (reads from OPENAI_API_KEY env by default)")
+    ai_group.add_argument("--api-key", default=None, metavar="KEY",
+                          help="API key for the LLM provider (auto-detected from env if not set)")
 
     # CSS-mode specific
     css_group = p.add_argument_group("CSS mode options")
@@ -103,13 +104,15 @@ async def run(args: argparse.Namespace) -> None:
 
     try:
         if args.mode == "ai":
-            if not args.api_key and "ollama" not in args.provider:
+            # CLI flag takes priority; otherwise auto-detect from the correct env var
+            resolved_key = args.api_key or get_api_key(args.provider)
+            if not resolved_key and "ollama" not in args.provider:
                 print(
-                    "Warning: no API key provided and provider is not Ollama. "
-                    "Set --api-key or OPENAI_API_KEY.",
+                    f"Warning: no API key found for provider '{args.provider}'.\n"
+                    f"Pass --api-key KEY or add the matching variable to .env.",
                     file=sys.stderr,
                 )
-            llm_cfg = LLMConfig(provider=args.provider, api_token=args.api_key or "no-token")
+            llm_cfg = LLMConfig(provider=args.provider, api_token=resolved_key or "no-token")
             data = await crawl_with_ai(
                 url=args.url,
                 schema=schema,
@@ -117,6 +120,7 @@ async def run(args: argparse.Namespace) -> None:
                 llm_config=llm_cfg,
                 wait_for=args.wait_for,
             )
+
 
         else:  # css
             data = await crawl_with_selectors(
