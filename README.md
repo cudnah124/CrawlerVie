@@ -30,7 +30,11 @@ python -c "from crawl4ai.install import post_install; post_install()"
 python -c "from crawl4ai.install import doctor; doctor()"
 
 cp .env.example .env
-# Điền OPENAI_API_KEY vào .env (chỉ cần cho mode 'ai')
+# Điền API key tương ứng provider vào .env (chỉ cần cho mode 'ai')
+# - openai/...      -> OPENAI_API_KEY
+# - openrouter/...  -> OPENROUTER_API_KEY (hoặc fallback OPENAI_API_KEY)
+# - gemini/google...-> GEMINI_API_KEY
+# - anthropic/...   -> ANTHROPIC_API_KEY
 ```
 
 ### Troubleshooting nhanh (Linux/Devcontainer)
@@ -74,6 +78,11 @@ python main.py css https://example.com --schema schemas/my_schema.json \
 # Dùng OpenAI (cần API key trong .env)
 python main.py ai https://news.ycombinator.com \
   --schema schemas/hackernews_ai.json \
+  --instruction "Extract every story: title, URL, score, comment count, and author"
+
+# Dùng OpenRouter
+python main.py ai https://news.ycombinator.com \
+  --provider openrouter/google/gemma-3-27b-it:free \
   --instruction "Extract every story: title, URL, score, comment count, and author"
 
 # Dùng Ollama local (miễn phí, chạy offline)

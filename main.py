@@ -73,8 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
     ai_group.add_argument("--provider", default=config.DEFAULT_LLM_PROVIDER,
                           metavar="PROVIDER",
                           help=f"LLM provider string, e.g. openai/gpt-4o-mini  (default: {config.DEFAULT_LLM_PROVIDER})")
-    ai_group.add_argument("--api-key", default=config.DEFAULT_API_KEY, metavar="KEY",
-                          help="API key for the LLM provider (reads from OPENAI_API_KEY env by default)")
+    ai_group.add_argument("--api-key", default="", metavar="KEY",
+                          help="API key for the LLM provider (if omitted, read from env based on --provider)")
 
     # CSS-mode specific
     css_group = p.add_argument_group("CSS mode options")
@@ -103,13 +103,15 @@ async def run(args: argparse.Namespace) -> None:
 
     try:
         if args.mode == "ai":
-            if not args.api_key and "ollama" not in args.provider:
+            api_key = args.api_key or config.get_api_key(args.provider)
+
+            if not api_key and "ollama" not in args.provider:
                 print(
                     "Warning: no API key provided and provider is not Ollama. "
-                    "Set --api-key or OPENAI_API_KEY.",
+                    "Set --api-key or provider env key (OPENAI_API_KEY / OPENROUTER_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY).",
                     file=sys.stderr,
                 )
-            llm_cfg = LLMConfig(provider=args.provider, api_token=args.api_key or "no-token")
+            llm_cfg = LLMConfig(provider=args.provider, api_token=api_key or "no-token")
             data = await crawl_with_ai(
                 url=args.url,
                 schema=schema,
