@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-from crawl4ai import LLMConfig
+from crawl4ai import LLMConfig, ProxyConfig
 
 from crawlers.ai_crawler import crawl_with_ai
 from crawlers.traditional_crawler import crawl_with_selectors
@@ -71,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--antibot", action="store_true",
                    help="Enable anti-bot bypass (stealth, magic mode, simulate_user). "
                         "Use for sites protected by Cloudflare or similar.")
+    p.add_argument("--proxy", metavar="URL", default=None,
+                   help="Proxy URL to route requests through, e.g. "
+                        "http://user:pass@host:port  (residential proxy bypasses Cloudflare on cloud)")
 
     # Shared LLM options (ai + schema-gen)
     llm_group = p.add_argument_group("LLM options (used by 'ai' and 'schema-gen' modes)")
@@ -113,6 +116,7 @@ def _load_schema(path: str | None, mode: str) -> dict:
 
 async def run(args: argparse.Namespace) -> None:
     api_key = args.api_key or get_api_key(args.provider)
+    proxy_cfg = ProxyConfig(server=args.proxy) if args.proxy else None
 
     # schema-gen: generate a schema and print/save it — no CSV output
     if args.mode == "schema-gen":
@@ -129,6 +133,7 @@ async def run(args: argparse.Namespace) -> None:
                 llm_config=llm_cfg,
                 output_path=args.schema_output,
                 antibot=args.antibot,
+                proxy_config=proxy_cfg,
             )
         except RuntimeError as e:
             sys.exit(f"schema-gen error: {e}")
@@ -156,6 +161,7 @@ async def run(args: argparse.Namespace) -> None:
                 llm_config=llm_cfg,
                 wait_for=args.wait_for,
                 antibot=args.antibot,
+                proxy_config=proxy_cfg,
             )
 
         else:  # css
@@ -165,6 +171,7 @@ async def run(args: argparse.Namespace) -> None:
                 wait_for=args.wait_for,
                 js_code=args.js,
                 antibot=args.antibot,
+                proxy_config=proxy_cfg,
             )
 
     except RuntimeError as e:

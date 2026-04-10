@@ -15,6 +15,7 @@ from crawl4ai import (
     CacheMode,
     LLMExtractionStrategy,
     LLMConfig,
+    ProxyConfig,
 )
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
@@ -25,13 +26,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import HEADLESS, PAGE_TIMEOUT, CHUNK_TOKEN_THRESHOLD
 
 
-def _make_browser_config(headless: bool, antibot: bool) -> BrowserConfig:
+def _make_browser_config(headless: bool, antibot: bool, proxy_config: ProxyConfig | None) -> BrowserConfig:
     return BrowserConfig(
         headless=headless,
-        enable_stealth=antibot,      # playwright-stealth patches fingerprint APIs
+        enable_stealth=antibot,
         user_agent_mode="random" if antibot else "",
         avoid_ads=True,
         verbose=False,
+        proxy_config=proxy_config,
     )
 
 
@@ -43,9 +45,16 @@ def _make_run_config(strategy: LLMExtractionStrategy, wait_for: str | None, anti
         cache_mode=CacheMode.BYPASS,
         extraction_strategy=strategy,
         markdown_generator=markdown_gen,
-        page_timeout=PAGE_TIMEOUT,
+        page_timeout=max(PAGE_TIMEOUT, 45_000) if antibot else PAGE_TIMEOUT,
         wait_for=wait_for,
-        # anti-bot triad — turns on random UA, navigator override, and human-like mouse events
+        # SPA handling (Crawl4AI recipe) — enabled when antibot=True
+        wait_until="load" if antibot else "domcontentloaded",
+        delay_before_return_html=2.5 if antibot else 0.1,
+        scan_full_page=antibot,
+        scroll_delay=0.3,
+        remove_overlay_elements=antibot,
+        remove_consent_popups=antibot,
+        # Anti-bot triad
         magic=antibot,
         simulate_user=antibot,
         override_navigator=antibot,
@@ -60,6 +69,7 @@ async def crawl_with_ai(
     wait_for: str | None = None,
     headless: bool = HEADLESS,
     antibot: bool = False,
+    proxy_config: ProxyConfig | None = None,
 ) -> list[dict[str, Any]]:
     """
     Fetch a page and extract structured data using an LLM.
@@ -87,7 +97,7 @@ async def crawl_with_ai(
         verbose=True,
     )
 
-    browser_cfg = _make_browser_config(headless, antibot)
+    browser_cfg = _make_browser_config(headless, antibot, proxy_config)
     run_cfg = _make_run_config(strategy, wait_for, antibot)
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:

@@ -1,0 +1,42 @@
+{
+  "name": "Nhật thuê bất động sản",
+  "type": "object",
+  "properties": {
+    "name": "string",
+    "price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^[0-9]+"
+    },
+    "reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "author": {
+            "type": "string",
+            "text": "Tên người đọc"
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          }
+        }
+      },
+      "required": [
+        "author",
+        "rating"
+      ]
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
