@@ -247,6 +247,90 @@ def dedupe_list(items):
     return result
 
 
+def normalize_param_item(item):
+    if not isinstance(item, dict):
+        return None
+    label = item.get("label") or item.get("name") or item.get("title")
+    value = item.get("value") or item.get("val") or item.get("text")
+    param_id = item.get("id") or item.get("key") or item.get("code")
+    if label is None and value is None:
+        return None
+    return {"id": param_id, "label": label, "value": value}
+
+
+def collect_params(ad_data):
+    sources = []
+    for key in ["params", "parameters", "pty_characteristics", "ad_features"]:
+        value = ad_data.get(key)
+        if isinstance(value, list):
+            sources.extend(value)
+    normalized = []
+    for item in sources:
+        normalized_item = normalize_param_item(item)
+        if normalized_item:
+            normalized.append(normalized_item)
+    normalized = dedupe_list(normalized)
+
+    existing_labels = {str(p.get("label")).strip().lower() for p in normalized if p.get("label")}
+
+    def add_param(label, value, param_id=None):
+        if value is None:
+            return
+        if label.strip().lower() in existing_labels:
+            return
+        normalized.append({"id": param_id, "label": label, "value": value})
+        existing_labels.add(label.strip().lower())
+
+    size = ad_data.get("size")
+    size_unit = ad_data.get("size_unit_string")
+    if size is not None and size_unit:
+        add_param("Diện tích đất", f"{size} {size_unit}", "size")
+
+    price_m2 = ad_data.get("price_million_per_m2")
+    if price_m2 is not None:
+        add_param("Giá/m²", f"{price_m2} triệu/m²", "price_m2")
+
+    legal_map = {
+        1: "Đã có sổ",
+        2: "Đang chờ sổ",
+        3: "Giấy tờ khác",
+        4: "Vi bằng",
+        5: "Sổ chung",
+    }
+    legal_code = ad_data.get("property_legal_document")
+    if legal_code in legal_map:
+        add_param("Giấy tờ pháp lý", legal_map[legal_code], "property_legal_document")
+
+    direction = ad_data.get("direction") or ad_data.get("direction_name")
+    direction_map = {
+        1: "Đông",
+        2: "Tây",
+        3: "Nam",
+        4: "Bắc",
+        5: "Đông Bắc",
+        6: "Tây Bắc",
+        7: "Đông Nam",
+        8: "Tây Nam",
+    }
+    if isinstance(direction, int) and direction in direction_map:
+        direction = direction_map[direction]
+    if direction:
+        add_param("Hướng đất", direction, "direction")
+
+    width = ad_data.get("width")
+    if width is not None:
+        add_param("Chiều ngang", f"{width} m", "width")
+
+    length = ad_data.get("length")
+    if length is not None:
+        add_param("Chiều dài", f"{length} m", "length")
+
+    if size_unit:
+        add_param("Đơn vị", size_unit, "size_unit")
+
+    return dedupe_list(normalized)
+
+
 def scrape_nhatot_ad(url):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
@@ -387,7 +471,7 @@ def scrape_nhatot_ad(url):
             "status": ad_data.get("status"),
             "type": ad_data.get("type"),
         },
-        "params": dedupe_list(ad_data.get("params", [])),
+        "params": collect_params(ad_data),
     }
 
     list_time = ad_data.get('list_time')

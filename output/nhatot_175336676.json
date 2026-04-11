@@ -1,0 +1,112 @@
+{
+  "id": {
+    "ad_id": 175336676,
+    "list_id": 131748311,
+    "account_id": 9329075,
+    "account_oid": "5d525d1fa0bbcf6df24a5532fd129dff"
+  },
+  "title": "NỀN THỔ CƯ MẶT TIỀN KINH DOANH ĐƯỜNG CÔNG AN HẬU CẦN",
+  "description": "Dự án: \nThông tin chi tiết: 🌽🌽NỀN ĐẸP MẶT TIỀN đường NGUYỄN VĂN NHUNG\n\n📌 Vị trí vàng, phù hợp kinh doanh mọi ngành nghề\n\n_ Diện tích: 170,6m² – Full thổ cư\nHướng Tây Bắc",
+  "category": {
+    "category": 1040,
+    "category_name": "Đất"
+  },
+  "price": {
+    "price": 2900000000,
+    "price_string": "2,9 tỷ",
+    "price_million_per_m2": 17.058823
+  },
+  "size": {
+    "size": 170,
+    "size_unit": "m²",
+    "width": 5,
+    "length": 34,
+    "living_size": null,
+    "area": 36
+  },
+  "rooms": {
+    "rooms": null,
+    "toilets": null,
+    "floors": null,
+    "house_type": null,
+    "furnishing_sell": null
+  },
+  "legal": {
+    "property_legal_document": 1
+  },
+  "location": {
+    "street_number": null,
+    "street_name": "Đường Nguyễn Văn Nhung",
+    "ward_name": "Xã Phước Hậu",
+    "area_name": "Huyện Long Hồ",
+    "region_name": "Vĩnh Long",
+    "latitude": 10.225678,
+    "longitude": 105.96523
+  },
+  "seller": {
+    "account_name": "Nhung Socola",
+    "avatar": "https://cdn.chotot.com/uac2/9329075",
+    "phone": "0938654452",
+    "company_ad": true
+  },
+  "media": {
+    "images": [
+      "https://cdn.chotot.com/LGcAR4o-8bcy5FXqyQKts-R7cB0NeLidjvTQIjHxHmQ/preset:view/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.jpg",
+      "https://cdn.chotot.com/q7G2SNi_6hRMITTfqb1WSyO1Mje4L3smalhPtv3Qr64/preset:view/plain/9e0d2d63a1e97e89f7f2958a2dbc58d6-2979341760289661478.jpg",
+      "https://cdn.chotot.com/QAr83LkrCjxuEsfBntrmP4Smbr6-XQ2QEhNdcfz1lTk/preset:view/plain/d03db22c1851a64e3511ef845b9f54d6-2979341760445844085.jpg",
+      "https://cdn.chotot.com/sFwE1qWJ7ELg1ZzHVdv-ihflxQnW14xCsMkgrJznMLk/preset:view/plain/21454cac289d8d4192f8267bdcabb1b1-2979341760402297588.jpg"
+    ],
+    "videos": []
+  },
+  "meta": {
+    "list_time": 1775874062927,
+    "orig_list_time": 1775826180000,
+    "date_text": "2 giờ trước",
+    "state": "accepted",
+    "status": "active",
+    "type": "s"
+  },
+  "params": [
+    {
+      "id": "land_type",
+      "label": "Loại hình",
+      "value": "Đất thổ cư"
+    },
+    {
+      "id": "width",
+      "label": "Chiều ngang",
+      "value": "Ngang 5 m"
+    },
+    {
+      "id": "size",
+      "label": "Diện tích đất",
+      "value": "170 m²"
+    },
+    {
+      "id": "price_m2",
+      "label": "Giá/m²",
+      "value": "17.058823 triệu/m²"
+    },
+    {
+      "id": "property_legal_document",
+      "label": "Giấy tờ pháp lý",
+      "value": "Đã có sổ"
+    },
+    {
+      "id": "direction",
+      "label": "Hướng đất",
+      "value": "Đông Nam"
+    },
+    {
+      "id": "length",
+      "label": "Chiều dài",
+      "value": "34 m"
+    },
+    {
+      "id": "size_unit",
+      "label": "Đơn vị",
+      "value": "m²"
+    }
+  ],
+  "posting_date": "2026-04-11 09:21:02"
+}

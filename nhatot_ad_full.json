@@ -1,0 +1,113 @@
+{
+  "account_id": 9329075,
+  "account_name": "Nhung Socola",
+  "account_oid": "5d525d1fa0bbcf6df24a5532fd129dff",
+  "ad_features": [],
+  "ad_id": 175336676,
+  "ad_labels": [],
+  "area": 36,
+  "area_name": "Huyện Long Hồ",
+  "area_v2": 503602,
+  "avatar": "https://cdn.chotot.com/uac2/9329075",
+  "average_rating": 5,
+  "average_rating_for_seller": 5,
+  "body": "Dự án: \nThông tin chi tiết: 🌽🌽NỀN ĐẸP MẶT TIỀN đường NGUYỄN VĂN NHUNG\n\n📌 Vị trí vàng, phù hợp kinh doanh mọi ngành nghề\n\n_ Diện tích: 170,6m² – Full thổ cư\nHướng Tây Bắc",
+  "business_days": [],
+  "category": 1040,
+  "category_name": "Đất",
+  "company_ad": true,
+  "contain_videos": 2,
+  "date": "2 giờ trước",
+  "direction": 7,
+  "fee_type": [],
+  "full_name": "Nhung Socola",
+  "image": "https://cdn.chotot.com/Rg3EoEf_pd3J5WzTutxZ4M987dMLDKNAJgEGeLgdGkg/preset:listing/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.jpg",
+  "image_thumbnails": [
+    {
+      "image": "https://cdn.chotot.com/LGcAR4o-8bcy5FXqyQKts-R7cB0NeLidjvTQIjHxHmQ/preset:view/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.jpg",
+      "thumbnail": "https://cdn.chotot.com/Rg3EoEf_pd3J5WzTutxZ4M987dMLDKNAJgEGeLgdGkg/preset:listing/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.jpg"
+    },
+    {
+      "image": "https://cdn.chotot.com/q7G2SNi_6hRMITTfqb1WSyO1Mje4L3smalhPtv3Qr64/preset:view/plain/9e0d2d63a1e97e89f7f2958a2dbc58d6-2979341760289661478.jpg",
+      "thumbnail": "https://cdn.chotot.com/Ch2QxUTrBYoA-DBz0lS79n3gMKEbFL2od-LdmdjFVfs/preset:listing/plain/9e0d2d63a1e97e89f7f2958a2dbc58d6-2979341760289661478.jpg"
+    },
+    {
+      "image": "https://cdn.chotot.com/QAr83LkrCjxuEsfBntrmP4Smbr6-XQ2QEhNdcfz1lTk/preset:view/plain/d03db22c1851a64e3511ef845b9f54d6-2979341760445844085.jpg",
+      "thumbnail": "https://cdn.chotot.com/c1Z1kMEQgFKsreaWM9vfhq03R2_Fnwn2B0E9f2pD3M4/preset:listing/plain/d03db22c1851a64e3511ef845b9f54d6-2979341760445844085.jpg"
+    },
+    {
+      "image": "https://cdn.chotot.com/sFwE1qWJ7ELg1ZzHVdv-ihflxQnW14xCsMkgrJznMLk/preset:view/plain/21454cac289d8d4192f8267bdcabb1b1-2979341760402297588.jpg",
+      "thumbnail": "https://cdn.chotot.com/rpRrSVgDE_7Sjr112rFLRNS6-WfAWs6PtBe1rZtbTQg/preset:listing/plain/21454cac289d8d4192f8267bdcabb1b1-2979341760402297588.jpg"
+    }
+  ],
+  "images": [
+    "https://cdn.chotot.com/LGcAR4o-8bcy5FXqyQKts-R7cB0NeLidjvTQIjHxHmQ/preset:view/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.jpg",
+    "https://cdn.chotot.com/q7G2SNi_6hRMITTfqb1WSyO1Mje4L3smalhPtv3Qr64/preset:view/plain/9e0d2d63a1e97e89f7f2958a2dbc58d6-2979341760289661478.jpg",
+    "https://cdn.chotot.com/QAr83LkrCjxuEsfBntrmP4Smbr6-XQ2QEhNdcfz1lTk/preset:view/plain/d03db22c1851a64e3511ef845b9f54d6-2979341760445844085.jpg",
+    "https://cdn.chotot.com/sFwE1qWJ7ELg1ZzHVdv-ihflxQnW14xCsMkgrJznMLk/preset:view/plain/21454cac289d8d4192f8267bdcabb1b1-2979341760402297588.jpg"
+  ],
+  "inspection_images": [],
+  "is_main_street": true,
+  "is_sticky": true,
+  "label_campaigns": [],
+  "land_type": 1,
+  "latitude": 10.225678,
+  "length": 34,
+  "list_id": 131748311,
+  "list_time": 1775874062927,
+  "location": "10.2256782,105.965231",
+  "location_id": "osm:W648558404",
+  "longitude": 105.96523,
+  "number_of_images": 4,
+  "orig_list_time": 1775826180000,
+  "params": [
+    {
+      "id": "land_type",
+      "label": "Loại hình",
+      "value": "Đất thổ cư"
+    },
+    {
+      "id": "width",
+      "label": "Chiều ngang",
+      "value": "Ngang 5 m"
+    }
+  ],
+  "phone": "093865****",
+  "price": 2900000000,
+  "price_million_per_m2": 17.058823,
+  "price_string": "2,9 tỷ",
+  "property_legal_document": 1,
+  "pty_characteristics": [
+    1,
+    6
+  ],
+  "pty_map": "https://cdn.chotot.com/admincentre/location/10x226478_105x966031_c.jpg",
+  "pty_map_modifier": 0.0008,
+  "region": 5,
+  "region_name": "Vĩnh Long",
+  "region_name_v3": "Vĩnh Long",
+  "region_v2": 5036,
+  "size": 170,
+  "size_unit": 1,
+  "size_unit_string": "m²",
+  "sold_ads": 11,
+  "special_display_images": [],
+  "specific_service_offered": [],
+  "state": "accepted",
+  "status": "active",
+  "sticky_ad_type": "default",
+  "stickyad_feature": "special_display",
+  "street_name": "Đường Nguyễn Văn Nhung",
+  "subject": "NỀN THỔ CƯ MẶT TIỀN KINH DOANH ĐƯỜNG CÔNG AN HẬU CẦN",
+  "thumbnail_image": "https://cdn.chotot.com/Rg3EoEf_pd3J5WzTutxZ4M987dMLDKNAJgEGeLgdGkg/preset:listing/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.jpg",
+  "total_rating": 5,
+  "total_rating_for_seller": 3,
+  "type": "s",
+  "unique_street_id": "5a0571e0caa0302eebb31e905f3e6620",
+  "videos": [],
+  "ward": 10192,
+  "ward_name": "Xã Phước Hậu",
+  "ward_name_v3": "Phường Phước Hậu",
+  "webp_image": "https://cdn.chotot.com/cX53kxfAnRey2iTUCGTz_avKDoa2ZR2GAQP_ctjUVfg/preset:listing/plain/77d0720c338693cad5f170803c1e577c-2979341760253547947.webp",
+  "width": 5
+}

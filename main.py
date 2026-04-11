@@ -19,6 +19,7 @@ import asyncio
 import json
 import sys
 from datetime import datetime
+from urllib.parse import urlparse
 from pathlib import Path
 
 from crawl4ai import LLMConfig, ProxyConfig
@@ -129,8 +130,18 @@ async def run(args: argparse.Namespace) -> None:
             sys.exit("Failed to scrape NhaTot ad data.")
         output_path = args.output
         if not output_path:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"output/nhatot_{timestamp}.json"
+            ad_id = None
+            if isinstance(ad_data, dict):
+                ad_id = ad_data.get("id", {}).get("ad_id")
+            if ad_id:
+                output_path = f"output/nhatot_{ad_id}.json"
+            else:
+                parsed = urlparse(args.url)
+                slug = parsed.path.rstrip("/").split("/")[-1]
+                slug = slug.replace(".htm", "").replace(".html", "")
+                if not slug:
+                    slug = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"output/nhatot_{slug}.json"
         out_file = Path(output_path)
         out_file.parent.mkdir(parents=True, exist_ok=True)
         out_file.write_text(json.dumps(ad_data, indent=2, ensure_ascii=False), encoding="utf-8")
