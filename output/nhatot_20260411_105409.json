@@ -1,0 +1,85 @@
+{
+  "id": {
+    "ad_id": 174842912,
+    "list_id": 131328316,
+    "account_id": 59668,
+    "account_oid": "c28f5e4b26c746270ae62c8215829039"
+  },
+  "title": "Bán nhà đường Phan Văn Hớn Quận 12 gần cầu Tham Lương",
+  "description": "Bán nhà Quận 12 đường Phan Văn Hớn gần cầu Tham Lương.\n- Nhà ngang 3,5m dài 6m xây dựng 1 trệt 1 lầu 2 phòng ngủ. \n- Giá bán 860tr còn thương lượng manh, Pháp lý sổ hồng chung 6 căn mua bán công chứng đồng sở hữu, được giữ sổ hồng gốc, xem nhà gọi em Phúc.",
+  "category": {
+    "category": 1020,
+    "category_name": "Nhà ở"
+  },
+  "price": {
+    "price": 860000000,
+    "price_string": "860 triệu",
+    "price_million_per_m2": 40.95238
+  },
+  "size": {
+    "size": 21,
+    "size_unit": "m²",
+    "width": 3.5,
+    "length": 6,
+    "living_size": 42,
+    "area": 107
+  },
+  "rooms": {
+    "rooms": 2,
+    "toilets": 1,
+    "floors": 1,
+    "house_type": 3,
+    "furnishing_sell": 3
+  },
+  "legal": {
+    "property_legal_document": 5
+  },
+  "location": {
+    "street_number": "285",
+    "street_name": "phan văn hơn",
+    "ward_name": "Phường Đông Hưng Thuận",
+    "area_name": "Quận 12",
+    "region_name": "Tp Hồ Chí Minh",
+    "latitude": 10.843384,
+    "longitude": 106.63061
+  },
+  "seller": {
+    "account_name": "Phúc",
+    "avatar": "https://cdn.chotot.com/uac2/59668",
+    "phone": "0903224901",
+    "company_ad": true
+  },
+  "media": {
+    "images": [
+      "https://cdn.chotot.com/8xDILq2z05IKapyOjVxlXFw95OlDZlxQZGNawVv7Nb8/preset:view/plain/e9cf17e9a70f63097f1267787674f837-2976376994764648903.jpg",
+      "https://cdn.chotot.com/NkuzCvX_YrtZwXiDwPG_Dv6-yJ9kKuRXsn92VKSQcxg/preset:view/plain/c0c82516d1d1e9a9e6648e162f90c481-2976376992902115783.jpg",
+      "https://cdn.chotot.com/PZYwTUOP0sHTfay3YR5xAu8Ihia4nqaYaAbOYtnFJPc/preset:view/plain/345612744b4c1d229b9f45d7603e0fa9-2976376993707487687.jpg",
+      "https://cdn.chotot.com/f24h_SsUNfsAn4z9T5xeFYgQxs7FGb3rRKrntvgGz0U/preset:view/plain/e182123563de66944b67c9c8223c8f75-2976376993448918820.jpg",
+      "https://cdn.chotot.com/AnN6decV2aeMhbWdXXlP7EIpVW5n1D07OMZFov2AbfQ/preset:view/plain/1736884cf4177625bd58a6ba2d7de97e-2976376993814731292.jpg",
+      "https://cdn.chotot.com/7brG17BAQ3l1S8MztHUan7nHyxWFwZSbXy6LMa-suIE/preset:view/plain/0e5568c4c140d1a96704be31e1a019e1-2976376993486784032.jpg",
+      "https://cdn.chotot.com/kZpl3O5xtIffXkfB-S06btj3jImPDl5pmtqYuop4EVY/preset:view/plain/846d97e16249f8928f56cef569284e12-2976376994561447634.jpg"
+    ],
+    "videos": []
+  },
+  "meta": {
+    "list_time": 1774325966592,
+    "orig_list_time": 1774058991000,
+    "date_text": "3 tuần trước",
+    "state": "accepted",
+    "status": "active",
+    "type": "s"
+  },
+  "params": [
+    {
+      "id": "rooms",
+      "label": "Số phòng ngủ",
+      "value": "2 PN"
+    },
+    {
+      "id": "house_type",
+      "label": "Loại hình",
+      "value": "Nhà ngõ, hẻm"
+    }
+  ],
+  "posting_date": "2026-03-24 11:19:26"
+}

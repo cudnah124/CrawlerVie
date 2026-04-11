@@ -2,20 +2,23 @@
 """
 Simple web crawler CLI → CSV output.
 
-Three modes:
+Four modes:
   ai         — uses an LLM to understand and extract data without selectors
   css        — uses hand-written CSS selectors for fast, deterministic extraction
   schema-gen — auto-generates a CSS schema for a URL using LLM (run once, reuse forever)
+    nhatot     — scrape a single NhaTot ad (Playwright)
 
 Usage examples:
-  python main.py ai  https://example.com/products --instruction "Extract all products"
-  python main.py css https://example.com/products --schema schemas/products.json
-  python main.py schema-gen https://example.com --query "article titles, dates, and authors"
+    python main.py ai  https://example.com/products --instruction "Extract all products"
+    python main.py css https://example.com/products --schema schemas/products.json
+    python main.py schema-gen https://example.com --query "article titles, dates, and authors"
+    python main.py nhatot https://www.nhatot.com/.../131328316.htm
 """
 import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from crawl4ai import LLMConfig, ProxyConfig
@@ -24,6 +27,7 @@ from crawlers.ai_crawler import crawl_with_ai
 from crawlers.traditional_crawler import crawl_with_selectors
 from crawlers.schema_generator import generate_schema
 from exporters.csv_exporter import export_to_csv
+from web.nhatot_scraper import scrape_nhatot_ad
 import config
 from config import get_api_key
 
@@ -59,8 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("mode", choices=["ai", "css", "schema-gen"],
-                   help="ai: LLM extraction  |  css: selector extraction  |  schema-gen: auto-build CSS schema")
+    p.add_argument("mode", choices=["ai", "css", "schema-gen", "nhatot"],
+                   help="ai: LLM extraction  |  css: selector extraction  |  schema-gen: auto-build CSS schema  |  nhatot: NhaTot ad")
     p.add_argument("url", help="URL to crawl")
     p.add_argument("--output", "-o", metavar="FILE",
                    help="Output CSV path (default: output/crawl_<timestamp>.csv)")
@@ -117,6 +121,21 @@ def _load_schema(path: str | None, mode: str) -> dict:
 async def run(args: argparse.Namespace) -> None:
     api_key = args.api_key or get_api_key(args.provider)
     proxy_cfg = ProxyConfig(server=args.proxy) if args.proxy else None
+
+    # nhatot: scrape a single ad and print JSON
+    if args.mode == "nhatot":
+        ad_data = await asyncio.to_thread(scrape_nhatot_ad, args.url)
+        if not ad_data:
+            sys.exit("Failed to scrape NhaTot ad data.")
+        output_path = args.output
+        if not output_path:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"output/nhatot_{timestamp}.json"
+        out_file = Path(output_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(json.dumps(ad_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"Wrote nhatot output to: {out_file}")
+        return
 
     # schema-gen: generate a schema and print/save it — no CSV output
     if args.mode == "schema-gen":
