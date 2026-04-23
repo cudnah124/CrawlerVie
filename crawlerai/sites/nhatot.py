@@ -1,51 +1,85 @@
 """
 crawlerai.sites.nhatot — Site-specific crawler for NhaTot.com.
 
-NhaTot is a Vietnamese real-estate marketplace (Next.js SPA) that requires:
-  - A visible Playwright browser (headless detection is active)
-  - playwright-stealth to pass fingerprint checks
-  - Manual "Hiện số" button interaction to reveal phone numbers
-  - Extracting structured data from the ``__NEXT_DATA__`` JSON payload
+Hai kiến trúc crawl được hỗ trợ (học từ crawl4ai):
 
-Public API::
+**Sync + Headed** (mặc định, cho trang khó):
+  - Dùng ``sync_playwright`` + ``headless=False``
+  - Vượt qua anti-bot tốt nhất (browser thật, có stealth)
+  - Phù hợp khi site yêu cầu giải captcha thủ công
 
-    from crawlerai.sites.nhatot import scrape_ad, scrape_listings
+  ::
 
-    # Single ad (synchronous)
-    ad = scrape_ad("https://www.nhatot.com/.../131328316.htm")
+      from crawlerai.sites.nhatot import scrape_ad, scrape_listings
+      ad  = scrape_ad(url)
+      ads = scrape_listings(list_url, limit=10)
 
-    # Multiple ads from a listing page
-    ads = scrape_listings("https://www.nhatot.com/mua-ban-bat-dong-san", limit=10)
+**Async + Headless** (nhanh hơn, cho batch):
+  - Dùng ``async_playwright`` + ``headless=True`` + stealth
+  - Chạy nhiều URL đồng thời với ``asyncio.gather``
+  - Dùng context-manager pattern giống crawl4ai ``AsyncWebCrawler``
 
-    # From an async context
-    import asyncio
-    ad = await asyncio.to_thread(scrape_ad, url)
+  ::
+
+      import asyncio
+      from crawlerai.sites.nhatot import AsyncNhaTotCrawler
+
+      # Single ad
+      async with AsyncNhaTotCrawler() as crawler:
+          ad = await crawler.scrape_ad(url)
+
+      # Concurrent batch (nhanh ~Nx so với tuần tự)
+      async with AsyncNhaTotCrawler() as crawler:
+          ads = await crawler.scrape_many([url1, url2, url3], concurrency=3)
+
+      # Listings page
+      async with AsyncNhaTotCrawler() as crawler:
+          ads = await crawler.scrape_listings(list_url, limit=10)
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, Page as AsyncPage
 
 try:
-    from playwright_stealth import stealth_sync as _stealth_fn
+    from playwright_stealth import stealth_sync as _stealth_sync_fn
 except ImportError:
     try:
-        from playwright_stealth import stealth as _stealth_fn  # type: ignore[no-redef]
+        from playwright_stealth import stealth as _stealth_sync_fn  # type: ignore[no-redef]
     except ImportError:
-        _stealth_fn = None  # type: ignore[assignment]
+        _stealth_sync_fn = None  # type: ignore[assignment]
+
+try:
+    from playwright_stealth import stealth_async as _stealth_async_fn
+except ImportError:
+    _stealth_async_fn = None  # type: ignore[assignment]
 
 
-# ── Stealth helper ─────────────────────────────────────────────────────────────
+
+# ── Stealth helpers ────────────────────────────────────────────────────────────
 
 def _apply_stealth(page) -> None:
-    if _stealth_fn is None:
+    """Apply stealth to a sync Playwright page."""
+    if _stealth_sync_fn is None:
         return
     try:
-        _stealth_fn(page)
+        _stealth_sync_fn(page)
+    except Exception:
+        pass
+
+
+async def _apply_stealth_async(page: AsyncPage) -> None:
+    """Apply stealth to an async Playwright page."""
+    if _stealth_async_fn is None:
+        return
+    try:
+        await _stealth_async_fn(page)
     except Exception:
         pass
 
@@ -307,7 +341,77 @@ def _parse_timestamp(list_time) -> str | None:
         return None
 
 
+
 # ── Public API ─────────────────────────────────────────────────────────────────
+
+# Shared between sync scrape_ad and AsyncNhaTotCrawler._parse_page
+def _build_info(ad_data: dict, phone_text: str | None = None) -> dict:
+    """Build the unified output dict from a parsed ad_data payload."""
+    info: dict = {
+        "id": {
+            "ad_id":      ad_data.get("ad_id"),
+            "list_id":    ad_data.get("list_id"),
+            "account_id": ad_data.get("account_id"),
+        },
+        "title":       ad_data.get("subject"),
+        "description": ad_data.get("body"),
+        "category": {
+            "category":      ad_data.get("category"),
+            "category_name": ad_data.get("category_name"),
+        },
+        "price": {
+            "price":                ad_data.get("price"),
+            "price_string":         ad_data.get("price_string") or ad_data.get("price_str"),
+            "price_million_per_m2": ad_data.get("price_million_per_m2"),
+        },
+        "size": {
+            "size":        ad_data.get("size"),
+            "size_unit":   ad_data.get("size_unit_string"),
+            "width":       ad_data.get("width"),
+            "length":      ad_data.get("length"),
+            "living_size": ad_data.get("living_size"),
+        },
+        "rooms": {
+            "rooms":           ad_data.get("rooms"),
+            "toilets":         ad_data.get("toilets"),
+            "floors":          ad_data.get("floors"),
+            "house_type":      ad_data.get("house_type"),
+            "furnishing_sell": ad_data.get("furnishing_sell"),
+        },
+        "legal": {
+            "property_legal_document": ad_data.get("property_legal_document"),
+        },
+        "location": {
+            "street_number": ad_data.get("street_number"),
+            "street_name":   ad_data.get("street_name"),
+            "ward_name":     ad_data.get("ward_name"),
+            "area_name":     ad_data.get("area_name"),
+            "region_name":   ad_data.get("region_name"),
+            "latitude":      ad_data.get("latitude"),
+            "longitude":     ad_data.get("longitude"),
+        },
+        "seller": {
+            "account_name": ad_data.get("account_name") or ad_data.get("full_name"),
+            "avatar":       ad_data.get("avatar"),
+            "phone":        ad_data.get("phone"),
+            "company_ad":   ad_data.get("company_ad"),
+        },
+        "media": {
+            "images": _dedupe(ad_data.get("images", [])),
+            "videos": ad_data.get("videos", []),
+        },
+        "meta": {
+            "list_time": ad_data.get("list_time"),
+            "state":     ad_data.get("state"),
+            "status":    ad_data.get("status"),
+            "type":      ad_data.get("type"),
+        },
+        "params":       _collect_params(ad_data),
+        "posting_date": _parse_timestamp(ad_data.get("list_time")),
+    }
+    if phone_text and not phone_text.startswith("1900"):
+        info["seller"]["phone"] = phone_text
+    return info
 
 def scrape_ad(url: str) -> dict | None:
     """
@@ -389,74 +493,7 @@ def scrape_ad(url: str) -> dict | None:
         print(f"JSON parse error: {exc}")
         return None
 
-    info: dict = {
-        "id": {
-            "ad_id":      ad_data.get("ad_id"),
-            "list_id":    ad_data.get("list_id"),
-            "account_id": ad_data.get("account_id"),
-        },
-        "title":       ad_data.get("subject"),
-        "description": ad_data.get("body"),
-        "category": {
-            "category":      ad_data.get("category"),
-            "category_name": ad_data.get("category_name"),
-        },
-        "price": {
-            "price":               ad_data.get("price"),
-            "price_string":        ad_data.get("price_string") or ad_data.get("price_str"),
-            "price_million_per_m2": ad_data.get("price_million_per_m2"),
-        },
-        "size": {
-            "size":        ad_data.get("size"),
-            "size_unit":   ad_data.get("size_unit_string"),
-            "width":       ad_data.get("width"),
-            "length":      ad_data.get("length"),
-            "living_size": ad_data.get("living_size"),
-        },
-        "rooms": {
-            "rooms":          ad_data.get("rooms"),
-            "toilets":        ad_data.get("toilets"),
-            "floors":         ad_data.get("floors"),
-            "house_type":     ad_data.get("house_type"),
-            "furnishing_sell": ad_data.get("furnishing_sell"),
-        },
-        "legal": {
-            "property_legal_document": ad_data.get("property_legal_document"),
-        },
-        "location": {
-            "street_number": ad_data.get("street_number"),
-            "street_name":   ad_data.get("street_name"),
-            "ward_name":     ad_data.get("ward_name"),
-            "area_name":     ad_data.get("area_name"),
-            "region_name":   ad_data.get("region_name"),
-            "latitude":      ad_data.get("latitude"),
-            "longitude":     ad_data.get("longitude"),
-        },
-        "seller": {
-            "account_name": ad_data.get("account_name") or ad_data.get("full_name"),
-            "avatar":       ad_data.get("avatar"),
-            "phone":        ad_data.get("phone"),
-            "company_ad":   ad_data.get("company_ad"),
-        },
-        "media": {
-            "images": _dedupe(ad_data.get("images", [])),
-            "videos": ad_data.get("videos", []),
-        },
-        "meta": {
-            "list_time": ad_data.get("list_time"),
-            "state":     ad_data.get("state"),
-            "status":    ad_data.get("status"),
-            "type":      ad_data.get("type"),
-        },
-        "params":       _collect_params(ad_data),
-        "posting_date": _parse_timestamp(ad_data.get("list_time")),
-    }
-
-    # Use the DOM-revealed phone if it's more complete
-    if phone_text and not phone_text.startswith("1900"):
-        info["seller"]["phone"] = phone_text
-
-    return info
+    return _build_info(ad_data, phone_text)
 
 
 def scrape_listings(list_url: str, limit: int = 10) -> list[dict]:
@@ -515,4 +552,319 @@ def scrape_listings(list_url: str, limit: int = 10) -> list[dict]:
     return results
 
 
-__all__ = ["scrape_ad", "scrape_listings"]
+__all__ = ["scrape_ad", "scrape_listings", "AsyncNhaTotCrawler"]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Async + Headless architecture — học từ crawl4ai AsyncWebCrawler pattern
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class AsyncNhaTotCrawler:
+    """
+    Async + Headless crawler cho NhaTot.com.
+
+    Học theo kiến trúc ``AsyncWebCrawler`` của crawl4ai:
+    - Dùng ``async_playwright`` với browser pool được chia sẻ giữa các lần crawl.
+    - Dùng context manager (``async with``) để tự start/close browser.
+    - Hỗ trợ concurrent crawl qua :meth:`scrape_many`.
+
+    Khi nào dùng kiến trúc này vs Sync+Headed:
+
+    ===========================  =============================================
+    Async + Headless (class này) Sync + Headed (scrape_ad / scrape_listings)
+    ===========================  =============================================
+    Headless=True                Headless=False (browser thật)
+    Nhanh hơn, batch            Chậm hơn, tương tác người dùng
+    Ít RAM hơn                  Cần RAM cho GUI
+    Phù hợp server/CI           Phù hợp captcha/site khó
+    ===========================  =============================================
+
+    Cách dùng::
+
+        import asyncio
+        from crawlerai.sites.nhatot import AsyncNhaTotCrawler
+
+        async def main():
+            # Dùng context manager — browser tự đóng khi ra khỏi block
+            async with AsyncNhaTotCrawler() as crawler:
+                # Crawl 1 ad
+                ad = await crawler.scrape_ad(url)
+
+                # Crawl nhiều ad đồng thời (mặc định 5 concurrent)
+                ads = await crawler.scrape_many([url1, url2, url3])
+
+                # Crawl từ listing page
+                ads = await crawler.scrape_listings(list_url, limit=10)
+
+        asyncio.run(main())
+
+        # Hoặc dùng explicit lifecycle (giống crawl4ai):
+        crawler = AsyncNhaTotCrawler(headless=True)
+        await crawler.start()
+        ad = await crawler.scrape_ad(url)
+        await crawler.close()
+    """
+
+    def __init__(self, headless: bool = True, timeout: int = 60_000):
+        """
+        Args:
+            headless: Chạy browser headless (mặc định True).
+                      Set ``False`` nếu gặp anti-bot, nhưng khi đó
+                      dùng :func:`scrape_ad` Sync+Headed sẽ tốt hơn.
+            timeout:  Page navigation timeout tính bằng ms (mặc định 60_000).
+        """
+        self.headless = headless
+        self.timeout = timeout
+        self._pw = None       # async_playwright instance
+        self._browser = None  # shared Chromium browser
+        self.ready = False
+
+    # ── Lifecycle (giống crawl4ai AsyncWebCrawler.start/close) ─────────────────
+
+    async def start(self) -> "AsyncNhaTotCrawler":
+        """Khởi động browser. Tự động gọi khi dùng ``async with``."""
+        self._pw = await async_playwright().start()
+        self._browser = await self._pw.chromium.launch(
+            headless=self.headless,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ],
+        )
+        self.ready = True
+        print(f"[AsyncNhaTotCrawler] Browser started (headless={self.headless})")
+        return self
+
+    async def close(self) -> None:
+        """Đóng browser và giải phóng resources."""
+        if self._browser:
+            await self._browser.close()
+        if self._pw:
+            await self._pw.stop()
+        self.ready = False
+
+    async def __aenter__(self) -> "AsyncNhaTotCrawler":
+        return await self.start()
+
+    async def __aexit__(self, *_) -> None:
+        await self.close()
+
+    # ── Internal page helpers (async versions) ─────────────────────────────────
+
+    async def _new_page(self) -> AsyncPage:
+        """Tạo page mới từ shared browser, apply stealth."""
+        if not self.ready:
+            await self.start()
+        page = await self._browser.new_page()
+        await _apply_stealth_async(page)
+        return page
+
+    async def _wait_for_next_data(self, page: AsyncPage, max_wait_ms: int = 60_000) -> bool:
+        """Poll async cho đến khi ``__NEXT_DATA__`` xuất hiện."""
+        start = datetime.now()
+        while True:
+            count = await page.locator("#__NEXT_DATA__").count()
+            if count > 0:
+                return True
+            elapsed_ms = int((datetime.now() - start).total_seconds() * 1000)
+            if elapsed_ms >= max_wait_ms:
+                return False
+            await page.wait_for_timeout(1000)
+
+    async def _try_reveal_phone_async(self, page: AsyncPage) -> None:
+        """Thử click nút hiện số bất đồng bộ (best-effort)."""
+        css_selectors = [
+            "button.b1b6q6wa.primary.r-normal.large.w-bold",
+            "[class*='LeadButton__showPhoneButton__'] button",
+            "[class*='ShowPhoneButton_wrapper__'] button",
+            ".InlineShowPhoneButton_phoneHidden__4KcON",
+            "button.b14cwtpv.link.r-normal.small.w-bold.t-link",
+        ]
+        for sel in css_selectors:
+            try:
+                loc = page.locator(sel)
+                if await loc.count() > 0:
+                    await loc.first.click(timeout=3000, force=True)
+                    await page.wait_for_timeout(800)
+                    return
+            except Exception:
+                continue
+        # Last resort: JS click
+        try:
+            await page.evaluate(r"""() => {
+                const el = document.querySelector('button.b1b6q6wa.primary.r-normal.large.w-bold')
+                    || document.querySelector("[class*='LeadButton__showPhoneButton__'] button")
+                    || document.querySelector('.b14cwtpv.link.r-normal.small.w-bold.t-link');
+                if (el) el.click();
+            }""")
+            await page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+    async def _extract_phone_async(self, page: AsyncPage) -> str | None:
+        """Trích phone từ DOM sau khi click nút hiện số."""
+        try:
+            result = await page.evaluate(r"""() => {
+                const tel = document.querySelector('a[href^="tel:"]');
+                if (tel) {
+                    const d = tel.getAttribute('href').replace('tel:', '').replace(/\D/g, '');
+                    if (d.length >= 10 && d.length <= 11 && !d.startsWith('1900')) return d;
+                }
+                const btn = document.querySelector('button.b1b6q6wa.primary.r-normal.large.w-bold')
+                    || document.querySelector("[class*='LeadButton__showPhoneButton__'] button")
+                    || document.querySelector('.InlineShowPhoneButton_linkContact__U_lEr')
+                    || document.querySelector('.b14cwtpv.link.r-normal.small.w-bold.t-link');
+                if (!btn) return null;
+                const digits = (btn.textContent || '').replace(/\D/g, '');
+                return (digits.length >= 10 && digits.length <= 11 && !digits.startsWith('1900'))
+                    ? digits : null;
+            }""")
+            return result
+        except Exception:
+            return None
+
+    async def _parse_page(self, page: AsyncPage, url: str) -> dict | None:
+        """Điều phối: navigate → wait __NEXT_DATA__ → reveal phone → parse."""
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout)
+        except Exception as exc:
+            print(f"[AsyncNhaTotCrawler] Navigate error {url}: {exc}")
+            return None
+
+        if not await self._wait_for_next_data(page, max_wait_ms=self.timeout):
+            print(f"[AsyncNhaTotCrawler] __NEXT_DATA__ not found: {url}")
+            return None
+
+        await page.wait_for_timeout(1500)
+        await self._try_reveal_phone_async(page)
+        await page.wait_for_timeout(800)
+        phone = await self._extract_phone_async(page)
+
+        try:
+            next_data = await page.evaluate("() => window.__NEXT_DATA__ || null")
+        except Exception:
+            next_data = None
+
+        if not next_data:
+            html_content = await page.content()
+            soup = BeautifulSoup(html_content, "html.parser")
+            tag = soup.find("script", {"id": "__NEXT_DATA__"})
+            if not tag:
+                return None
+            try:
+                next_data = json.loads(tag.string or tag.text)
+            except json.JSONDecodeError:
+                return None
+
+        ad_data = _find_ad_data(next_data) or {}
+        if not ad_data:
+            return None
+
+        return _build_info(ad_data, phone)
+
+    # ── Public async API ───────────────────────────────────────────────────────
+
+    async def scrape_ad(self, url: str) -> dict | None:
+        """
+        Crawl một NhaTot ad bất đồng bộ (headless).
+
+        Args:
+            url: URL của ad NhaTot.
+
+        Returns:
+            Dict có cấu trúc giống :func:`scrape_ad` (sync), hoặc ``None``.
+        """
+        page = await self._new_page()
+        try:
+            return await self._parse_page(page, url)
+        finally:
+            await page.close()
+
+    async def scrape_many(
+        self,
+        urls: list[str],
+        concurrency: int = 5,
+    ) -> list[dict]:
+        """
+        Crawl nhiều ad đồng thời — không thể làm với Sync+Headed.
+
+        Dùng semaphore để giới hạn số tab mở cùng lúc (giống crawl4ai
+        ``MemoryAdaptiveDispatcher`` nhưng đơn giản hơn).
+
+        Args:
+            urls:        Danh sách URL cần crawl.
+            concurrency: Số tab chạy song song (mặc định 5).
+
+        Returns:
+            Danh sách dict ad (bỏ qua các URL lỗi).
+
+        Example::
+
+            async with AsyncNhaTotCrawler() as crawler:
+                ads = await crawler.scrape_many(
+                    [url1, url2, url3, url4, url5],
+                    concurrency=3,
+                )
+        """
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _bounded(url: str) -> dict | None:
+            async with sem:
+                page = await self._new_page()
+                try:
+                    return await self._parse_page(page, url)
+                finally:
+                    await page.close()
+
+        results = await asyncio.gather(*[_bounded(u) for u in urls])
+        return [r for r in results if r is not None]
+
+    async def scrape_listings(
+        self,
+        list_url: str,
+        limit: int = 10,
+        concurrency: int = 5,
+    ) -> list[dict]:
+        """
+        Crawl listing page (lấy links) rồi scrape các ad đồng thời.
+
+        Args:
+            list_url:    URL trang danh sách.
+            limit:       Số ad tối đa.
+            concurrency: Số tab song song khi scrape ad.
+
+        Returns:
+            Danh sách dict ad.
+        """
+        links: list[str] = []
+        page = await self._new_page()
+        try:
+            print(f"[AsyncNhaTotCrawler] Loading listing: {list_url}")
+            await page.goto(list_url, wait_until="domcontentloaded", timeout=self.timeout)
+            await page.wait_for_timeout(2000)
+
+            for _ in range(8):
+                hrefs = await page.evaluate(
+                    "() => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href'))"
+                )
+                for href in hrefs:
+                    if not href or ".htm" not in href:
+                        continue
+                    if "nhatot.com" not in href:
+                        href = urljoin(list_url, href)
+                    if "/mua-ban" not in href or href in links:
+                        continue
+                    links.append(href)
+                if len(links) >= limit:
+                    break
+                await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(1500)
+        except Exception as exc:
+            print(f"[AsyncNhaTotCrawler] Listing error: {exc}")
+        finally:
+            await page.close()
+
+        return await self.scrape_many(links[:limit], concurrency=concurrency)
+
