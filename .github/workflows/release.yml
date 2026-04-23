@@ -1,0 +1,99 @@
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'          # Trigger on v0.1.0, v1.0.0, etc.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # Required for creating GitHub Releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $TAG_VERSION"
+
+      - name: Check version consistency
+        run: |
+          TAG_VERSION=${{ steps.get_version.outputs.VERSION }}
+          PACKAGE_VERSION=$(python -c "from crawlerai.__version__ import __version__; print(__version__)")
+
+          echo "Tag version    : $TAG_VERSION"
+          echo "Package version: $PACKAGE_VERSION"
+
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "❌ Version mismatch! Tag=$TAG_VERSION but crawlerai/__version__.py=$PACKAGE_VERSION"
+            echo "Update crawlerai/__version__.py before tagging."
+            exit 1
+          fi
+          echo "✅ Version check passed: $TAG_VERSION"
+
+      - name: Install build tools
+        run: |
+          pip install --upgrade pip build twine
+
+      - name: Build wheel + sdist
+        run: python -m build
+
+      - name: Check package
+        run: twine check dist/*
+
+      - name: Upload to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          echo "📦 Uploading to PyPI..."
+          twine upload dist/*
+          echo "✅ Published: https://pypi.org/project/crawlerai/"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          files: dist/*
+          body: |
+            ## 🎉 crawlerai v${{ steps.get_version.outputs.VERSION }}
+
+            ### 📦 Installation
+            ```bash
+            pip install crawlerai==${{ steps.get_version.outputs.VERSION }}
+
+            # With CLI support
+            pip install "crawlerai[cli]==${{ steps.get_version.outputs.VERSION }}"
+            ```
+
+            ### 🐳 Docker
+            ```bash
+            docker pull crawlerai/crawlerai:${{ steps.get_version.outputs.VERSION }}
+            docker pull crawlerai/crawlerai:latest
+            ```
+            > Docker images are built in a separate workflow. Check [docker-release.yml](.github/workflows/docker-release.yml).
+
+            ### 📝 What's Changed
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Release v${{ steps.get_version.outputs.VERSION }} Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPI**: https://pypi.org/project/crawlerai/" >> $GITHUB_STEP_SUMMARY
+          echo "- **Install**: \`pip install crawlerai==${{ steps.get_version.outputs.VERSION }}\`" >> $GITHUB_STEP_SUMMARY

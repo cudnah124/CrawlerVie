@@ -1,0 +1,41 @@
+version: '3.8'
+
+# ── Shared config ──────────────────────────────────────────────────────────────
+x-base-config: &base-config
+  env_file:
+    - .env            # LLM API keys (copy from .env.example)
+  volumes:
+    - /dev/shm:/dev/shm       # Chromium shared-memory performance
+    - ./output:/app/output    # Persist crawl output CSV/JSON files
+    - ./schemas:/app/schemas  # Persist generated CSS schemas
+  deploy:
+    resources:
+      limits:
+        memory: 2G
+      reservations:
+        memory: 512M
+  restart: unless-stopped
+
+services:
+  crawlerai:
+    # 1. Pull from Docker Hub (default)
+    #    docker compose up
+    # 2. Build locally
+    #    docker compose up --build
+    image: ${IMAGE:-crawlerai:${TAG:-latest}}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CRAWLERAI_VERSION: ${CRAWLERAI_VERSION:-0.1.0}
+
+    <<: *base-config
+
+    # Example: run a one-off crawl script
+    # Override the default CMD:
+    #   docker compose run --rm crawlerai python my_script.py
+    command: >
+      python -c "
+      import crawlerai, asyncio
+      print('crawlerai', crawlerai.__version__, 'is ready.')
+      "

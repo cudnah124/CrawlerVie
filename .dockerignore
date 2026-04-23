@@ -1,0 +1,31 @@
+# Exclude everything by default, then whitelist what's needed
+*
+
+# ── Whitelist ──────────────────────────────────────────────────────────────────
+!crawlerai/
+!schemas/
+!pyproject.toml
+!README.md
+!MANIFEST.in
+!setup.cfg
+!LICENSE
+
+# ── Always exclude ─────────────────────────────────────────────────────────────
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.env
+.env.example
+.venv
+venv/
+*.egg-info/
+dist/
+build/
+output/
+*.log
+*.swp
+tests/

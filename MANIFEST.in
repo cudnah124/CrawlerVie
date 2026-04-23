@@ -1,0 +1,5 @@
+include pyproject.toml
+include README.md
+include LICENSE
+include MANIFEST.in
+recursive-include schemas *.json

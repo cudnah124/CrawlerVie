@@ -1,2 +1,63 @@
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ── Build / packaging ──────────────────────────────────────────────────────────
+build/
+dist/
+develop-eggs/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ── Environments ───────────────────────────────────────────────────────────────
 .env
-output
+.env.local
+.venv
+venv/
+env/
+ENV/
+
+# ── Testing / coverage ─────────────────────────────────────────────────────────
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+coverage.xml
+nosetests.xml
+
+# ── Runtime output ─────────────────────────────────────────────────────────────
+output/
+*.log
+*.db
+*.sqlite3
+
+# ── IDE / OS ───────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+**/.DS_Store
+*.swp
+
+# ── Type checkers ──────────────────────────────────────────────────────────────
+.mypy_cache/
+.pytype/
+.pyre/
+cython_debug/
+
+# ── Temporary ──────────────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+
+# ── NhaTot debug dumps ─────────────────────────────────────────────────────────
+nhatot_*.json
+nhatot_next_data_dump.json
+nhatot_ad_full.json
