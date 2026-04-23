@@ -61,3 +61,7 @@ temp/
 nhatot_*.json
 nhatot_next_data_dump.json
 nhatot_ad_full.json
+
+# ── Browser profiles (Cloudflare cookies — không commit) ────────────────────────
+.browser_profile/
+crawlerai-nhatot-*/
