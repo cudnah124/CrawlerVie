@@ -40,6 +40,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import tempfile
 from datetime import datetime
 from urllib.parse import urljoin
 
@@ -607,45 +609,65 @@ class AsyncNhaTotCrawler:
         await crawler.close()
     """
 
-    def __init__(self, headless: bool = True, timeout: int = 60_000):
+    def __init__(self, headless: bool = True, timeout: int = 60_000,
+                 user_data_dir: str | None = None):
         """
         Args:
-            headless: Chạy browser headless (mặc định True).
-                      Set ``False`` nếu gặp anti-bot, nhưng khi đó
-                      dùng :func:`scrape_ad` Sync+Headed sẽ tốt hơn.
-            timeout:  Page navigation timeout tính bằng ms (mặc định 60_000).
+            headless:      Chạy browser headless (mặc định True).
+            timeout:       Page navigation timeout tính bằng ms (mặc định 60_000).
+            user_data_dir: Thư mục lưu profile (cookies, cache) — giống crawl4ai.
+                           Nếu None, tạo temp dir (xóa khi close).
+                           Truyền vào đường dẫn cố định để CF cookies tồn tại
+                           giữa các lần chạy script.
         """
         self.headless = headless
         self.timeout = timeout
         self._pw = None        # async_playwright instance
-        self._browser = None   # shared Chromium browser
-        self._context = None   # shared browser context (UA + viewport + navigator override)
+        self._browser = None   # persistent context acts as browser
+        self._context = None   # launch_persistent_context (= browser + context)
+        self._user_data_dir: str | None = user_data_dir
+        self._tmp_dir_owned = (user_data_dir is None)  # True → tự dọn khi close
         self.ready = False
 
 
     # ── Lifecycle (giống crawl4ai AsyncWebCrawler.start/close) ─────────────────
 
     async def start(self) -> "AsyncNhaTotCrawler":
-        """Khởi động browser. Tự động gọi khi dùng ``async with``."""
+        """
+        Khởi động browser với **persistent context** — học từ crawl4ai.
+
+        Crawl4ai dùng ``launch_persistent_context(user_data_dir)`` để lưu
+        cookies/cache xuống đĩa, giúp Cloudflare nhận ra browser "quen biết"
+        thay vì thấy một fresh browser mỗi lần. Đây là lý do tại sao
+        ``new_context()`` bị block còn persistent thì không.
+        """
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(
-            headless=self.headless,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--window-size=1920,1080",
-            ],
+
+        # Tạo (hoặc reuse) user_data_dir — nếu không truyền vào thì tạo temp
+        if not self._user_data_dir:
+            self._user_data_dir = tempfile.mkdtemp(prefix="crawlerai-nhatot-")
+            self._tmp_dir_owned = True
+
+        _ARGS = [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--disable-renderer-backgrounding",
+            "--disable-ipc-flooding-protection",
+            "--window-size=1920,1080",
+        ]
+        _UA = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
         )
-        # Tạo context với UA thật và viewport thật — học từ crawl4ai setup_context()
-        # Thiếu context → navigator.webdriver vẫn bị lộ dù có stealth
-        self._context = await self._browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
+        # launch_persistent_context = browser + context trong 1 — giống crawl4ai
+        self._context = await self._pw.chromium.launch_persistent_context(
+            self._user_data_dir,
+            headless=self.headless,
+            args=_ARGS,
+            user_agent=_UA,
             viewport={"width": 1920, "height": 1080},
             locale="vi-VN",
             timezone_id="Asia/Ho_Chi_Minh",
@@ -656,25 +678,22 @@ class AsyncNhaTotCrawler:
                 "sec-ch-ua-platform": '"Windows"',
             },
         )
-        # Override navigator.webdriver = false ở init script — thiếu đây là lý do
-        # headless bị detect dù đã có playwright-stealth
+        # Navigator override ở init script — tương tự crawl4ai navigator_overrider.js
         await self._context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined,
-                configurable: true,
+                get: () => undefined, configurable: true,
             });
             Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
-                configurable: true,
+                get: () => [1, 2, 3, 4, 5], configurable: true,
             });
             Object.defineProperty(navigator, 'languages', {
-                get: () => ['vi-VN', 'vi', 'en-US', 'en'],
-                configurable: true,
+                get: () => ['vi-VN', 'vi', 'en-US', 'en'], configurable: true,
             });
             window.chrome = { runtime: {} };
         """)
         self.ready = True
-        print(f"[AsyncNhaTotCrawler] Browser started (headless={self.headless})")
+        print(f"[AsyncNhaTotCrawler] Persistent browser started "
+              f"(headless={self.headless}, profile={self._user_data_dir})")
         return self
 
     async def close(self) -> None:
