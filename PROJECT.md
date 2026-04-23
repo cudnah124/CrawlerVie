@@ -1,162 +1,82 @@
-📘 CrawlerAI – Tài liệu kiến trúc & chức năng
-1. Tổng quan dự án
+📘 CrawlerAI – Tài liệu kiến trúc & chức năng (Refactored Library)
 
-CrawlerAI là hệ thống thu thập dữ liệu web (Web Scraper) mạnh mẽ, hỗ trợ hai phương thức chính:
+## 1. Tổng quan dự án
 
-🔹 AI Mode (LLM)
-Sử dụng mô hình ngôn ngữ lớn để hiểu nội dung trang web
-Không cần viết CSS Selector
-Chỉ cần:
-URL
-Instruction (mô tả dữ liệu cần lấy)
-Schema mục tiêu
-🔹 Traditional Mode (CSS)
-Crawl bằng CSS Selectors
-Nhanh, ổn định, không tốn chi phí API
-Yêu cầu schema JSON định nghĩa selector
-🧱 Nền tảng sử dụng
-Crawl4AI: xử lý crawl tổng quát
-Playwright: xử lý các case phức tạp (anti-bot, dynamic web)
-2. Các chức năng chính (Core Functions)
-2.1 🤖 Crawl bằng AI
+**CrawlerAI** là một thư viện Python nhẹ và mạnh mẽ được xây dựng dựa trên [Crawl4AI](https://github.com/unclecode/crawl4ai). Dự án đã được refactor thành cấu trúc package chuyên nghiệp, hỗ trợ cả việc sử dụng như một thư viện (library) và công cụ dòng lệnh (CLI).
 
-Tên: crawl_with_ai
-Module: crawlers/ai_crawler.py
+Dự án cung cấp hai phương thức trích xuất chính:
+- 🔹 **LLM Mode**: Sử dụng AI để hiểu và trích xuất dữ liệu không cần bộ chọn (selectors).
+- 🔹 **Schema Mode**: Sử dụng CSS Selectors để trích xuất nhanh, ổn định và miễn phí.
 
-Mô tả:
-Trích xuất dữ liệu có cấu trúc từ bất kỳ website nào bằng LLM
+---
 
-Luồng xử lý:
+## 2. Các chức năng chính (Public API)
 
-Khởi tạo browser (Headless / Stealth)
-Convert HTML → Markdown (giảm token)
-Gửi Markdown + Schema + Instruction → LLM
-Nhận JSON và xử lý lỗi
-2.2 ⚡ Crawl bằng CSS Selector
+Dưới đây là các hàm chính được export trực tiếp từ package `crawlerai`.
 
-Tên: crawl_with_selectors
-Module: crawlers/traditional_crawler.py
+### 2.1 🤖 Trích xuất bằng AI
+- **Hàm**: `crawlerai.crawl_llm()`
+- **Mô tả**: Gửi nội dung trang web (dạng Markdown rút gọn) tới LLM để trích xuất JSON theo yêu cầu.
+- **Tính năng**: Tự động chia nhỏ nội dung (chunking), hỗ trợ nhiều provider (OpenAI, Gemini, Ollama...).
 
-Mô tả:
-Phương pháp crawl truyền thống, nhanh và miễn phí
+### 2.2 ⚡ Trích xuất bằng Schema (CSS)
+- **Hàm**: `crawlerai.crawl_schema()`
+- **Mô tả**: Sử dụng CSS/XPath selectors để lấy dữ liệu với tốc độ cực nhanh.
+- **Tính năng**: Hỗ trợ lặp lại các phần tử (lists), trích xuất thuộc tính (attributes), và xử lý SPA.
 
-Luồng xử lý:
+### 2.3 🧠 Tự động tạo Schema
+- **Hàm**: `crawlerai.generate_schema()`
+- **Mô tả**: Sử dụng LLM để phân tích cấu trúc HTML của một URL và tự động sinh ra file JSON chứa các bộ chọn CSS tối ưu.
 
-Load trang web
-Dùng JsonCssExtractionStrategy (Crawl4AI)
-Map DOM → JSON theo schema
-Trả dữ liệu ngay lập tức
-2.3 🧠 Tự động tạo Schema
+### 2.4 🏠 Scraper chuyên biệt NhaTot
+- **Hàm**: `crawlerai.sites.nhatot.scrape_ad()`, `scrape_listings()`
+- **Tính năng nâng cao**:
+    - **📞 Reveal Phone**: Click và giải mã số điện thoại ẩn.
+    - **🔍 Deep Extraction**: Parse trực tiếp từ `__NEXT_DATA__` của trang web.
 
-Tên: generate_schema
-Module: crawlers/schema_generator.py
+---
 
-Mô tả:
-Dùng LLM để phân tích HTML và sinh CSS selectors
+## 3. Cấu trúc thư mục (New Project Structure)
 
-Mục đích:
+| Module / Thư mục | Vai trò | Mô tả |
+| :--- | :--- | :--- |
+| `crawlerai/core/` | **Core Factories** | Tạo cấu hình Browser và RunConfig chuẩn hóa cho Crawl4AI. |
+| `crawlerai/config/` | **Settings** | Quản lý API keys và cấu hình hệ thống từ `.env`. |
+| `crawlerai/strategies/` | **Scraping Logic** | Triển khai các chiến lược LLMExtraction và CSS/Schema. |
+| `crawlerai/sites/` | **Site Specific** | Các scraper tùy biến cho website phức tạp (VD: NhaTot). |
+| `crawlerai/schema_gen/` | **Utility** | Công cụ sinh Schema tự động bằng AI. |
+| `crawlerai/exporters/` | **Output** | Xuất dữ liệu ra CSV (Excel-friendly) hoặc JSON. |
+| `crawlerai/cli/` | **CLI Interface** | Xử lý các lệnh từ command line (llm, schema, gen, nhatot). |
+| `crawlerai/__init__.py` | **Public API** | Đầu mối export các hàm chính để sử dụng như một thư viện. |
+| `schemas/` | **Knowledge** | Nơi lưu trữ các schema JSON đã tạo. |
+| `output/` | **Data** | Thư mục mặc định chứa kết quả crawl. |
 
-Không cần mở DevTools
-Tạo nhanh crawler cho site mới
-2.4 🏠 Scraper chuyên biệt NhaTot
+---
 
-Tên:
+## 4. Workflows & Công nghệ
 
-scrape_nhatot_ad
-scrape_nhatot_listings
+### 🔄 Data Pipeline
+`Input (CLI/API) → Browser Config → Page Loading → Extraction Strategy → Normalization → Export (CSV/JSON)`
 
-Module: web/nhatot_scraper.py
+### 🛠 Công nghệ cốt lõi
+1. **Crawl4AI**: Engine xử lý crawl và lọc Markdown.
+2. **Playwright**: Điều khiển trình duyệt, xử lý JavaScript và bypass bot.
+3. **LiteLLM**: Giao tiếp với đa dạng các mô hình ngôn ngữ (OpenAI, Gemini, v.v.).
+4. **BeautifulSoup4**: Hỗ trợ parse DOM trong các site-specific scrapers.
+5. **Click**: Xây dựng giao diện dòng lệnh mạnh mẽ.
 
-Tính năng nâng cao:
+---
 
-📞 Reveal Phone
-Click "Hiện số" bằng nhiều chiến thuật:
-CSS selector
-Text matching
-Mouse events
-🔍 Deep JSON Extraction
-Parse dữ liệu từ __NEXT_DATA__
-Lấy chính xác:
-Giá
-Diện tích
-Pháp lý
-GPS
-🧩 Captcha Handling
-Detect captcha
-Cho phép user xử lý thủ công
-3. Các chức năng hỗ trợ (Utilities)
-3.1 📄 Export CSV
+## 5. Hướng dẫn sử dụng CLI mới
 
-Tên: export_to_csv
-Module: exporters/csv_exporter.py
+Dự án hiện hỗ trợ lệnh `crawlerai` trực tiếp (sau khi cài đặt):
 
-Đặc điểm:
+- **LLM Crawl**: `crawlerai llm <URL> -i "Extract products"`
+- **Schema Crawl**: `crawlerai schema <URL> --schema schemas/mysite.json`
+- **Gen Schema**: `crawlerai gen <URL> -q "all prices and titles"`
+- **NhaTot**: `crawlerai nhatot <URL>`
 
-Flatten JSON lồng nhau
-Encoding: utf-8-sig (Excel-friendly)
-Auto generate column headers
-3.2 ⚙️ Configuration
-
-Module: config.py
-
-Chức năng:
-
-Đọc .env
-Quản lý API Keys (OpenAI, Gemini, Ollama…)
-Cấu hình browser:
-Timeout
-Headless
-Proxy
-3.3 🛡️ Anti-bot & SPA Handling
-
-Áp dụng: cả AI & CSS mode
-
-Cơ chế:
-
-🕵️ Stealth Mode (bypass Cloudflare)
-⏳ Wait for Selector (SPA)
-📜 Auto Scroll (lazy loading)
-🌐 Proxy Support (rotate IP)
-4. Cấu trúc thư mục (Project Structure)
-Module / File	Vai trò	Mô tả
-main.py	CLI Entry Point	Chạy các mode: ai, css, schema-gen, nhatot
-config.py	Settings	API keys, browser config
-crawlers/	Core Logic	AI crawler, CSS crawler, schema generator
-web/	Specialized Scrapers	Scraper riêng cho từng website
-exporters/	Data Output	Xuất CSV
-schemas/	Knowledge Base	Lưu JSON schema
-5. Workflow xử lý dữ liệu
-🔄 Pipeline tổng thể
-Input → Browser → Page Load → Extraction → Normalization → Export
-Chi tiết từng bước
-1. Input
-User chạy lệnh qua CLI:
-python main.py --mode ai --url ... --prompt ...
-2. Browser Initialization
-AI/CSS: Crawl4AI
-NhaTot: Playwright + Stealth
-3. Page Loading
-Load trang
-Wait selector
-Scroll
-Remove popup/cookie
-4. Extraction
-
-AI Mode:
-
-HTML → Markdown → LLM → JSON
-
-CSS Mode:
-
-HTML → CSS Selectors → JSON
-
-NhaTot Mode:
-
-Click Reveal Phone → Parse __NEXT_DATA__ → JSON
-5. Normalization
-Chuẩn hóa dữ liệu
-Xử lý null
-Flatten nested fields
-6. Export
-Ghi file CSV vào:
-output/
+---
+<div align="center">
+Tài liệu cập nhật ngày: 23/04/2026.
+</div>
