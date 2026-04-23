@@ -289,8 +289,8 @@ def _collect_params(ad_data: dict) -> list[dict]:
 
     if (w := ad_data.get("width")) is not None:
         _add("Chiều ngang", f"{w} m", "width")
-    if (l := ad_data.get("length")) is not None:
-        _add("Chiều dài", f"{l} m", "length")
+    if (length_val := ad_data.get("length")) is not None:
+        _add("Chiều dài", f"{length_val} m", "length")
 
     return _dedupe(normalized)
 

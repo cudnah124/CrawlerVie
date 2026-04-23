@@ -38,7 +38,7 @@ except ImportError:
 
 from crawlerai import crawl_llm, crawl_schema, generate_schema
 from crawlerai.exporters.csv_exporter import export_to_csv
-from crawlerai.config.settings import get_default_provider, get_api_key
+from crawlerai.config.settings import get_default_provider
 
 
 # ── Shared options ─────────────────────────────────────────────────────────────

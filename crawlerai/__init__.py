@@ -51,6 +51,7 @@ __all__ = [
     "crawl_schema",
     "generate_schema",
     "export_to_csv",
+    "__version__",
 ]
 
 # version is imported from __version__.py above
