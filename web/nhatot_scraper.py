@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 from datetime import datetime
+from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 try:
     from playwright_stealth import stealth_sync as _stealth
@@ -491,6 +492,53 @@ def scrape_nhatot_ad(url):
         scraped_info["seller"]["phone"] = phone_text
 
     return scraped_info
+
+
+def scrape_nhatot_listings(list_url, limit=10):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        apply_stealth(page)
+
+        try:
+            print(f"Navigating to {list_url} with Playwright...")
+            page.goto(list_url, wait_until='domcontentloaded', timeout=60000)
+            page.wait_for_timeout(3000)
+
+            links = []
+            for _ in range(8):
+                raw_links = page.evaluate(
+                    r"""() => Array.from(document.querySelectorAll('a[href]'))
+                        .map(a => a.getAttribute('href'))"""
+                )
+                for href in raw_links:
+                    if not href:
+                        continue
+                    if ".htm" not in href:
+                        continue
+                    if "nhatot.com" not in href:
+                        href = urljoin(list_url, href)
+                    if "/mua-ban-" not in href and "/mua-ban" not in href:
+                        continue
+                    if href not in links:
+                        links.append(href)
+                if len(links) >= limit:
+                    break
+                page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(2000)
+
+            browser.close()
+        except Exception as e:
+            print(f"Error fetching listing page: {e}")
+            browser.close()
+            return []
+
+    results = []
+    for href in links[:limit]:
+        ad_data = scrape_nhatot_ad(href)
+        if ad_data:
+            results.append(ad_data)
+    return results
 
 
 if __name__ == '__main__':

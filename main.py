@@ -2,17 +2,21 @@
 """
 Simple web crawler CLI → CSV output.
 
-Four modes:
+Six modes:
   ai         — uses an LLM to understand and extract data without selectors
   css        — uses hand-written CSS selectors for fast, deterministic extraction
   schema-gen — auto-generates a CSS schema for a URL using LLM (run once, reuse forever)
     nhatot     — scrape a single NhaTot ad (Playwright)
+    nhatot-list — scrape multiple NhaTot ads from a listing page
+    nhatot-csv — merge nhatot JSON files into a single CSV
 
 Usage examples:
     python main.py ai  https://example.com/products --instruction "Extract all products"
     python main.py css https://example.com/products --schema schemas/products.json
     python main.py schema-gen https://example.com --query "article titles, dates, and authors"
     python main.py nhatot https://www.nhatot.com/.../131328316.htm
+    python main.py nhatot-list https://www.nhatot.com/mua-ban-bat-dong-san --limit 10
+    python main.py nhatot-csv output --output output/nhatot_all.csv
 """
 import argparse
 import asyncio
@@ -28,7 +32,7 @@ from crawlers.ai_crawler import crawl_with_ai
 from crawlers.traditional_crawler import crawl_with_selectors
 from crawlers.schema_generator import generate_schema
 from exporters.csv_exporter import export_to_csv
-from web.nhatot_scraper import scrape_nhatot_ad
+from web.nhatot_scraper import scrape_nhatot_ad, scrape_nhatot_listings
 import config
 from config import get_api_key
 
@@ -64,8 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("mode", choices=["ai", "css", "schema-gen", "nhatot"],
-                   help="ai: LLM extraction  |  css: selector extraction  |  schema-gen: auto-build CSS schema  |  nhatot: NhaTot ad")
+    p.add_argument("mode", choices=["ai", "css", "schema-gen", "nhatot", "nhatot-list", "nhatot-csv"],
+                   help="ai: LLM extraction  |  css: selector extraction  |  schema-gen: auto-build CSS schema  |  nhatot: NhaTot ad  |  nhatot-list: listing page  |  nhatot-csv: merge nhatot JSON")
     p.add_argument("url", help="URL to crawl")
     p.add_argument("--output", "-o", metavar="FILE",
                    help="Output CSV path (default: output/crawl_<timestamp>.csv)")
@@ -101,6 +105,13 @@ def build_parser() -> argparse.ArgumentParser:
     css_group = p.add_argument_group("CSS mode options")
     css_group.add_argument("--js", metavar="CODE",
                            help="JavaScript snippet to execute before extraction")
+
+    nhatot_group = p.add_argument_group("nhatot-list options")
+    nhatot_group.add_argument("--limit", type=int, default=10,
+                              help="Number of ads to scrape from the listing page")
+    nhatot_csv_group = p.add_argument_group("nhatot-csv options")
+    nhatot_csv_group.add_argument("--input-dir", default=None,
+                                  help="Directory with nhatot_*.json files (default: first positional URL arg or output)")
 
     return p
 
@@ -146,6 +157,50 @@ async def run(args: argparse.Namespace) -> None:
         out_file.parent.mkdir(parents=True, exist_ok=True)
         out_file.write_text(json.dumps(ad_data, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"Wrote nhatot output to: {out_file}")
+        return
+
+    # nhatot-list: scrape multiple ads and save per-ad JSON files
+    if args.mode == "nhatot-list":
+        ads = await asyncio.to_thread(scrape_nhatot_listings, args.url, args.limit)
+        if not ads:
+            sys.exit("Failed to scrape NhaTot listing.")
+        output_dir = Path(args.output) if args.output else Path("output")
+        if output_dir.suffix == ".json":
+            output_dir = output_dir.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        for ad in ads:
+            ad_id = ad.get("id", {}).get("ad_id") if isinstance(ad, dict) else None
+            if ad_id:
+                filename = f"nhatot_{ad_id}.json"
+            else:
+                filename = f"nhatot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            out_file = output_dir / filename
+            out_file.write_text(json.dumps(ad, indent=2, ensure_ascii=False), encoding="utf-8")
+            print(f"Wrote nhatot output to: {out_file}")
+        return
+
+    # nhatot-csv: merge nhatot JSON files in a directory
+    if args.mode == "nhatot-csv":
+        input_dir = Path(args.input_dir or args.url or "output")
+        if not input_dir.exists() or not input_dir.is_dir():
+            sys.exit(f"Input directory not found: {input_dir}")
+        json_files = sorted(input_dir.glob("nhatot_*.json"))
+        if not json_files:
+            sys.exit(f"No nhatot_*.json files found in: {input_dir}")
+
+        rows = []
+        for file_path in json_files:
+            try:
+                rows.append(json.loads(file_path.read_text(encoding="utf-8")))
+            except json.JSONDecodeError:
+                print(f"Skipping invalid JSON: {file_path}")
+
+        if not rows:
+            sys.exit("No valid nhatot JSON files to export.")
+
+        output_csv = args.output or (Path("output") / "nhatot_all.csv")
+        export_to_csv(rows, output_path=output_csv)
         return
 
     # schema-gen: generate a schema and print/save it — no CSV output
