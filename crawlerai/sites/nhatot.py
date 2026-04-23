@@ -617,9 +617,11 @@ class AsyncNhaTotCrawler:
         """
         self.headless = headless
         self.timeout = timeout
-        self._pw = None       # async_playwright instance
-        self._browser = None  # shared Chromium browser
+        self._pw = None        # async_playwright instance
+        self._browser = None   # shared Chromium browser
+        self._context = None   # shared browser context (UA + viewport + navigator override)
         self.ready = False
+
 
     # ── Lifecycle (giống crawl4ai AsyncWebCrawler.start/close) ─────────────────
 
@@ -632,14 +634,53 @@ class AsyncNhaTotCrawler:
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--window-size=1920,1080",
             ],
         )
+        # Tạo context với UA thật và viewport thật — học từ crawl4ai setup_context()
+        # Thiếu context → navigator.webdriver vẫn bị lộ dù có stealth
+        self._context = await self._browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1920, "height": 1080},
+            locale="vi-VN",
+            timezone_id="Asia/Ho_Chi_Minh",
+            extra_http_headers={
+                "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+                "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+            },
+        )
+        # Override navigator.webdriver = false ở init script — thiếu đây là lý do
+        # headless bị detect dù đã có playwright-stealth
+        await self._context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined,
+                configurable: true,
+            });
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+                configurable: true,
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['vi-VN', 'vi', 'en-US', 'en'],
+                configurable: true,
+            });
+            window.chrome = { runtime: {} };
+        """)
         self.ready = True
         print(f"[AsyncNhaTotCrawler] Browser started (headless={self.headless})")
         return self
 
     async def close(self) -> None:
         """Đóng browser và giải phóng resources."""
+        if self._context:
+            await self._context.close()
         if self._browser:
             await self._browser.close()
         if self._pw:
@@ -655,20 +696,31 @@ class AsyncNhaTotCrawler:
     # ── Internal page helpers (async versions) ─────────────────────────────────
 
     async def _new_page(self) -> AsyncPage:
-        """Tạo page mới từ shared browser, apply stealth."""
+        """Tạo page mới từ shared context (UA + viewport + navigator override đã set sẵn)."""
         if not self.ready:
             await self.start()
-        page = await self._browser.new_page()
+        page = await self._context.new_page()
+        # Stealth ở page level — bổ sung thêm cho init_script ở context level
         await _apply_stealth_async(page)
         return page
 
     async def _wait_for_next_data(self, page: AsyncPage, max_wait_ms: int = 60_000) -> bool:
-        """Poll async cho đến khi ``__NEXT_DATA__`` xuất hiện."""
+        """Poll async cho đến khi ``__NEXT_DATA__`` xuất hiện.
+
+        Dùng JS eval thay vì DOM locator để nhanh và chính xác hơn —
+        vì locator của Playwright phụ thuộc vào selector engine có thể bị
+        chặn khi browser detect automation.
+        """
         start = datetime.now()
         while True:
-            count = await page.locator("#__NEXT_DATA__").count()
-            if count > 0:
-                return True
+            try:
+                ok = await page.evaluate(
+                    "() => !!(window.__NEXT_DATA__ && window.__NEXT_DATA__.props)"
+                )
+                if ok:
+                    return True
+            except Exception:
+                pass
             elapsed_ms = int((datetime.now() - start).total_seconds() * 1000)
             if elapsed_ms >= max_wait_ms:
                 return False
@@ -729,18 +781,26 @@ class AsyncNhaTotCrawler:
     async def _parse_page(self, page: AsyncPage, url: str) -> dict | None:
         """Điều phối: navigate → wait __NEXT_DATA__ → reveal phone → parse."""
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout)
+            # Dùng 'load' thay vì 'domcontentloaded' để Next.js kịp hydrate
+            await page.goto(url, wait_until="load", timeout=self.timeout)
         except Exception as exc:
             print(f"[AsyncNhaTotCrawler] Navigate error {url}: {exc}")
             return None
 
-        if not await self._wait_for_next_data(page, max_wait_ms=self.timeout):
+        # Poll tối đa timeout ms, nhưng thường xong sau 2-5s
+        if not await self._wait_for_next_data(page, max_wait_ms=min(self.timeout, 30_000)):
             print(f"[AsyncNhaTotCrawler] __NEXT_DATA__ not found: {url}")
+            # Debug: in title để biết có bị block không
+            try:
+                title = await page.title()
+                print(f"[AsyncNhaTotCrawler] Page title: '{title}'")
+            except Exception:
+                pass
             return None
 
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(1000)
         await self._try_reveal_phone_async(page)
-        await page.wait_for_timeout(800)
+        await page.wait_for_timeout(500)
         phone = await self._extract_phone_async(page)
 
         try:
