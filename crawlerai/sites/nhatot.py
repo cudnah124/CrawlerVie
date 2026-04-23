@@ -239,7 +239,8 @@ def _find_ad_data(data: dict) -> dict | None:
 
     def _walk(obj):
         if isinstance(obj, dict):
-            if primary.issubset(obj) or (primary & obj and secondary & obj):
+            # Dùng intersection (giao tập hợp) thay vì toán tử & để tránh lỗi với dict
+            if primary.issubset(obj) or (primary.intersection(obj) and secondary.intersection(obj)):
                 return obj
             for v in obj.values():
                 found = _walk(v)
