@@ -1,129 +1,137 @@
-# crawlerAI
+# 🚀🤖 crawlerAI: CLI-first Web Scraper with AI Support & Site-Specific Logic.
 
-Web scraper với hai mode: AI (LLM) và CSS selector. Đầu ra luôn là file CSV.
+<div align="center">
 
-```
-crawlerAI/
-├── config.py                    # Cấu hình chung, đọc từ .env
-├── main.py                      # Entry point
-├── crawlers/
-│   ├── ai_crawler.py            # Crawl dùng LLM
-│   └── traditional_crawler.py  # Crawl dùng CSS selector
-├── exporters/
-│   └── csv_exporter.py         # Xuất kết quả ra CSV
-└── schemas/                    # Schema mẫu có thể dùng ngay
-    ├── hackernews_css.json
-    └── hackernews_ai.json
-```
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Powered by Crawl4AI](https://img.shields.io/badge/Powered%20by-Crawl4AI-orange)](https://github.com/unclecode/crawl4ai)
 
-## Setup
+---
 
+**crawlerAI** turns any website into clean, structured CSV data. Whether you need the power of **LLMs** for unstructured pages or the speed of **CSS selectors** for scale, crawlerAI has you covered. Built on top of the battle-tested Crawl4AI engine with added "secret sauce" for challenging sites.
+
+</div>
+
+---
+
+<details>
+  <summary>💡 <strong>Why use crawlerAI?</strong></summary>
+
+- **AI-Native Extraction**: Extract data using natural language instructions. No more Inspect Element.
+- **Hybrid Performance**: Switch between AI (intelligent) and CSS (fast) modes seamlessly.
+- **Site-Specific Superpowers**: Specialized modules for complex sites like **NhaTot.com** (reveals hidden phone numbers, parses internal JSON).
+- **Stealth by Default**: Integrated anti-bot bypass, user simulation, and proxy support.
+- **Excel-Ready Export**: One-click CSV output with proper UTF-8-BOM encoding for perfect Vietnamese font support.
+</details>
+
+## 🚀 Quick Start
+
+1. **Clone and Install**:
 ```bash
+git clone https://github.com/your-repo/crawlerAI.git
+cd crawlerAI
+
+# Install dependencies
 pip install -r requirements.txt
-# Cách khuyến nghị (ổn định hơn, không phụ thuộc CLI có nằm trong PATH hay không)
-python -c "from crawl4ai.install import post_install; post_install()"
 
-# Nếu máy bạn có sẵn CLI thì vẫn có thể dùng:
-# crawl4ai-setup
+# Setup Playwright browsers
+playwright install chromium
+```
 
-# Kiểm tra setup đã OK chưa
-python -c "from crawl4ai.install import doctor; doctor()"
-
+2. **Setup Environment**:
+```bash
 cp .env.example .env
-# Điền API key tương ứng provider vào .env (chỉ cần cho mode 'ai')
-# - openai/...      -> OPENAI_API_KEY
-# - openrouter/...  -> OPENROUTER_API_KEY (hoặc fallback OPENAI_API_KEY)
-# - gemini/google...-> GEMINI_API_KEY
-# - anthropic/...   -> ANTHROPIC_API_KEY
+# Add your OPENAI_API_KEY or GEMINI_API_KEY
 ```
 
-### Troubleshooting nhanh (Linux/Devcontainer)
-
-Nếu `doctor()` báo thiếu browser Playwright:
-
+3. **Run your first crawl**:
 ```bash
-python -m playwright install chromium
-```
+# AI Mode: Just describe what you want
+python main.py ai https://news.ycombinator.com --instruction "Extract titles and URLs of all stories"
 
-Nếu báo thiếu shared library (ví dụ: `libatk-1.0.so.0`):
-
-```bash
-python -m playwright install-deps chromium
-```
-
-Nếu `apt` lỗi repo bên thứ 3 (ví dụ Yarn key), tạm disable repo đó rồi chạy lại lệnh trên.
-
-## Sử dụng
-
-### Mode CSS — nhanh, miễn phí, deterministic
-
-```bash
-# Dùng schema mẫu có sẵn
+# CSS Mode: Fast and repeatable
 python main.py css https://news.ycombinator.com --schema schemas/hackernews_css.json
-
-# Chờ element render trước khi extract (trang SPA)
-python main.py css https://example.com --schema schemas/my_schema.json --wait-for "css:div.results"
-
-# Chỉ định file output
-python main.py css https://example.com --schema schemas/my_schema.json --output output/data.csv
-
-# Chạy JS trước khi extract (ví dụ scroll để load lazy content)
-python main.py css https://example.com --schema schemas/my_schema.json \
-  --js "window.scrollTo(0, document.body.scrollHeight)"
 ```
 
-### Mode AI — không cần biết cấu trúc HTML, tự suy luận
+## ✨ Core Features
 
+<details>
+<summary>🤖 <strong>AI-Driven Extraction</strong></summary>
+
+- **Instruction-Based**: Pass natural language prompts like "Extract all property prices and area" to the LLM.
+- **Multi-Provider Support**: Works with OpenAI, Gemini (Flash recommended), Anthropic, OpenRouter, and Ollama (local).
+- **Markdown Optimization**: Uses `fit_markdown` to strip noise and reduce token costs by up to 80%.
+</details>
+
+<details>
+<summary>🔎 <strong>Traditional CSS Mode</strong></summary>
+
+- **Deterministic & Free**: Zero LLM costs. Sub-second extraction for high-volume tasks.
+- **Advanced Schemas**: Supports nested fields, lists, and attribute extraction.
+- **Schema-Gen Utility**: Use the `schema-gen` mode to let AI write the CSS selectors once, then run them indefinitely for free.
+</details>
+
+<details>
+<summary>🏠 <strong>Specialized: NhaTot.com Scraper</strong></summary>
+
+- **Phone Reveal Technology**: Automatically clicks and interacts with "Show Phone" buttons using a multi-strategy approach.
+- **__NEXT_DATA__ Parsing**: Directly extracts deeply nested JSON objects from the site's internal state for 100% accuracy.
+- **Captcha Awareness**: Detects and asks for manual intervention when Cloudflare checks appear.
+</details>
+
+<details>
+<summary>🛡️ <strong>Anti-Bot & Stealth</strong></summary>
+
+- **Playwright Stealth**: Mimics real browser behavior to bypass basic detection.
+- **Magic Mode**: Crawl4AI's "magic" flags enabled for challenging Cloudflare protected sites.
+- **Proxy Support**: Route requests through residential proxies using the `--proxy` flag.
+</details>
+
+## 🔬 Usage Examples
+
+<details>
+<summary>📝 <strong>Generate a CSS Schema automatically</strong></summary>
+
+Dont want to write JSON selectors? Let the LLM do it once:
 ```bash
-# Dùng OpenAI (cần API key trong .env)
-python main.py ai https://news.ycombinator.com \
-  --schema schemas/hackernews_ai.json \
-  --instruction "Extract every story: title, URL, score, comment count, and author"
-
-# Dùng OpenRouter
-python main.py ai https://news.ycombinator.com \
-  --provider openrouter/google/gemma-3-27b-it:free \
-  --instruction "Extract every story: title, URL, score, comment count, and author"
-
-# Dùng Ollama local (miễn phí, chạy offline)
-python main.py ai https://example.com \
-  --provider ollama/qwen2.5 \
-  --instruction "Extract all product names and prices"
-
-# Dùng Gemini Flash (rẻ và nhanh)
-python main.py ai https://example.com \
-  --provider gemini/gemini-2.0-flash \
-  --api-key AIza...
+python main.py schema-gen https://example.com/listings \
+  --query "All product names, prices and image links" \
+  --schema-output schemas/my_new_site.json
 ```
+</details>
 
-## Viết schema CSS
+<details>
+<summary>🏠 <strong>Scraping Real Estate (NhaTot)</strong></summary>
 
-```json
-{
-  "name": "My schema",
-  "baseSelector": "div.product",
-  "fields": [
-    {"name": "title",  "selector": "h2",         "type": "text"},
-    {"name": "price",  "selector": "span.price",  "type": "text"},
-    {"name": "url",    "selector": "a",           "type": "attribute", "attribute": "href"},
-    {"name": "image",  "selector": "img",         "type": "attribute", "attribute": "src"}
-  ]
-}
+Get all details including the hidden seller phone number:
+```bash
+# Single ad
+python main.py nhatot https://www.nhatot.com/.../ad_id.htm
+
+# Listing page (scrapes multiple)
+python main.py nhatot-list https://www.nhatot.com/mua-ban-bat-dong-san --limit 20
 ```
+</details>
 
-`baseSelector` chọn element lặp lại (ví dụ `div.product`). Mỗi field trong `fields` là một selector tương đối bên trong element đó.
+<details>
+<summary>🛠️ <strong>Wait for dynamic content (SPA)</strong></summary>
 
-## Viết schema AI
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "name":  {"type": "string", "description": "Product name"},
-    "price": {"type": "string", "description": "Price with currency"},
-    "rating":{"type": "number", "description": "Star rating from 1 to 5"}
-  }
-}
+For React/Vue sites that need time to render:
+```bash
+python main.py css https://myspa.com --wait-for "div.results-list"
 ```
+</details>
 
-Đây là Pydantic/JSON Schema chuẩn. LLM sẽ cố map nội dung trang sang đúng kiểu dữ liệu này.
+---
+
+> **💡 Pro Tip:** Use `gemini/gemini-2.0-flash` as your provider for the best speed/cost ratio in AI mode. It's incredibly fast and well-supported by crawlerAI!
+
+## 🤝 Contributing
+
+We welcome contributions! Feel free to open issues or PRs for new site-specific modules or generic crawler improvements.
+
+---
+
+<div align="center">
+Built with ❤️ by the DM Research Team. Powered by <a href="https://github.com/unclecode/crawl4ai">Crawl4AI</a>.
+</div>
