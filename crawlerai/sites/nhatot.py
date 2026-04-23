@@ -841,14 +841,21 @@ class AsyncNhaTotCrawler:
         links: list[str] = []
         page = await self._new_page()
         try:
-            print(f"[AsyncNhaTotCrawler] Loading listing: {list_url}")
-            await page.goto(list_url, wait_until="domcontentloaded", timeout=self.timeout)
-            await page.wait_for_timeout(2000)
+            print(f"[AsyncNhaTotCrawler] Loading listing: {list_url} ...")
+            # Dùng 'load' để đảm bảo các script của Next.js đã khởi chạy
+            await page.goto(list_url, wait_until="load", timeout=self.timeout)
+            
+            # Đợi cho đến khi dữ liệu Next.js xuất hiện (dấu hiệu trang đã render xong)
+            if not await self._wait_for_next_data(page, max_wait_ms=15000):
+                print("[AsyncNhaTotCrawler] Warning: __NEXT_DATA__ not found on listing page. Trying to find links anyway...")
+            
+            await page.wait_for_timeout(3000)
 
-            for _ in range(8):
+            for i in range(8):
                 hrefs = await page.evaluate(
                     "() => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href'))"
                 )
+                new_links_found = 0
                 for href in hrefs:
                     if not href or ".htm" not in href:
                         continue
@@ -857,10 +864,16 @@ class AsyncNhaTotCrawler:
                     if "/mua-ban" not in href or href in links:
                         continue
                     links.append(href)
+                    new_links_found += 1
+                
+                print(f"[AsyncNhaTotCrawler] Scroll {i+1}: Found {len(links)} links so far...")
+                
                 if len(links) >= limit:
                     break
-                await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(1500)
+                
+                # Cuộn xuống để load thêm tin (lazy loading)
+                await page.evaluate("window.scrollBy(0, 1000)")
+                await page.wait_for_timeout(2000)
         except Exception as exc:
             print(f"[AsyncNhaTotCrawler] Listing error: {exc}")
         finally:
