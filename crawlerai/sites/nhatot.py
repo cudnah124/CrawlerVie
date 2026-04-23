@@ -42,12 +42,15 @@ import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime
+import re
+import shutil
+from datetime import datetime, timedelta
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright, Page as AsyncPage
+
 
 try:
     from playwright_stealth import stealth_sync as _stealth_sync_fn
@@ -62,6 +65,36 @@ try:
 except ImportError:
     _stealth_async_fn = None  # type: ignore[assignment]
 
+def parse_vietnamese_time(time_str: str | None) -> datetime | None:
+    """
+    Hàm tiện ích trích xuất datetime từ chuỗi tiếng Việt như '5 phút trước', 'Hôm qua'...
+    """
+    if not time_str:
+        return None
+    time_str = time_str.lower()
+    now = datetime.now()
+    if 'vừa xong' in time_str:
+        return now
+    match = re.search(r'(\d+)\s+phút\s+trước', time_str)
+    if match:
+        return now - timedelta(minutes=int(match.group(1)))
+    match = re.search(r'(\d+)\s+giờ\s+trước', time_str)
+    if match:
+        return now - timedelta(hours=int(match.group(1)))
+    if 'hôm qua' in time_str:
+        return now - timedelta(days=1)
+    match = re.search(r'(\d+)\s+ngày\s+trước', time_str)
+    if match:
+        return now - timedelta(days=int(match.group(1)))
+    match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', time_str)
+    if match:
+        try:
+            from datetime import datetime as dt
+            return dt.strptime(match.group(1), '%d/%m/%Y')
+        except ValueError:
+            pass
+    return None
+    return None
 
 
 # ── Stealth helpers ────────────────────────────────────────────────────────────
@@ -706,6 +739,27 @@ class AsyncNhaTotCrawler:
             await self._pw.stop()
         self.ready = False
 
+    async def restart_session(self) -> None:
+        """
+        Đóng session cũ, xóa sạch profile rác trên đĩa và khởi động session mới.
+        Chiến thuật này cực kỳ hiệu quả để bypass Cloudflare khi scrape nhiều trang.
+        """
+        # 1. Close current context/pw
+        if self._context:
+            await self._context.close()
+        if self._pw:
+            await self._pw.stop()
+        
+        # 2. Delete profile directory if exists
+        if self._user_data_dir and os.path.exists(self._user_data_dir):
+            try:
+                shutil.rmtree(self._user_data_dir)
+            except Exception:
+                pass
+        
+        # 3. Start fresh
+        await self.start()
+
     async def __aenter__(self) -> "AsyncNhaTotCrawler":
         return await self.start()
 
@@ -901,6 +955,32 @@ class AsyncNhaTotCrawler:
         results = await asyncio.gather(*[_bounded(u) for u in urls])
         return [r for r in results if r is not None]
 
+    async def scrape_many_batched(
+        self,
+        urls: list[str],
+        batch_size: int = 5,
+        delay_between_batches: float = 3.0,
+    ) -> list[dict]:
+        """
+        Crawl hàng loạt tin đăng theo batch, mỗi batch khởi động lại session mới.
+        Đây là chức năng chính giúp tránh bị Cloudflare tracking khi crawl số lượng lớn.
+        """
+        all_results = []
+        for i in range(0, len(urls), batch_size):
+            batch = urls[i:i+batch_size]
+            # Restart session trước mỗi batch
+            await self.restart_session()
+            print(f"[AsyncNhaTotCrawler] Batch {i//batch_size + 1}: Scraping {len(batch)} URLs...")
+            
+            # Scrape batch này concurrently
+            results = await self.scrape_many(batch, concurrency=batch_size)
+            all_results.extend(results)
+            
+            if i + batch_size < len(urls):
+                await asyncio.sleep(delay_between_batches)
+        
+        return all_results
+
     async def scrape_listings(
         self,
         list_url: str,
@@ -960,4 +1040,74 @@ class AsyncNhaTotCrawler:
             await page.close()
 
         return await self.scrape_many(links[:limit], concurrency=concurrency)
+
+    async def scrape_listings_today(
+        self,
+        list_url: str,
+        max_pages: int = 5,
+    ) -> list[dict]:
+        """
+        Crawl các tin đăng trong vòng 24h từ trang danh sách.
+        Sử dụng chiến thuật reset session cho mỗi trang listing để bypass CF.
+        """
+        all_filtered_urls = []
+        current_page = 1
+        keep_paging = True
+        
+        while current_page <= max_pages and keep_paging:
+            # 1. Fresh start cho mỗi trang listing
+            await self.restart_session()
+            page_url = f"{list_url}?page={current_page}" if current_page > 1 else list_url
+            print(f"[AsyncNhaTotCrawler] Listing: Page {current_page} - {page_url}")
+            
+            page = await self._new_page()
+            try:
+                await page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+                await page.wait_for_timeout(2000)
+                
+                # Trích xuất links và thời gian hiển thị
+                ads = await page.evaluate(r"""() => {
+                    const results = [];
+                    const items = document.querySelectorAll('a[itemprop="item"]');
+                    items.forEach(a => {
+                        const href = a.getAttribute('href');
+                        if (!href || !href.includes('.htm')) return;
+                        let text = '';
+                        let container = a.closest('li') || a.parentElement;
+                        if (container) text = container.innerText;
+                        results.push({ url: href, innerText: text });
+                    });
+                    return results;
+                }""")
+                
+                page_found = 0
+                for ad in ads:
+                    url = urljoin(list_url, ad['url'])
+                    # Tìm chuỗi thời gian trong innerText
+                    time_match = re.search(r'(phút trước|giờ trước|ngày trước|Hôm qua|vừa xong)', ad['innerText'], re.I)
+                    time_text = time_match.group(0) if time_match else ""
+                    
+                    post_time = parse_vietnamese_time(time_text)
+                    if post_time and post_time >= datetime.now() - timedelta(days=1):
+                        if url not in all_filtered_urls:
+                            all_filtered_urls.append(url)
+                            page_found += 1
+                    elif not post_time and current_page == 1:
+                        all_filtered_urls.append(url)
+                        page_found += 1
+                    elif post_time and post_time < datetime.now() - timedelta(days=1):
+                        keep_paging = False
+                
+                print(f"[AsyncNhaTotCrawler] Page {current_page}: Extracted {page_found} links.")
+                if page_found == 0 and current_page > 1:
+                    keep_paging = False
+            except Exception as e:
+                print(f"[AsyncNhaTotCrawler] Error: {e}")
+                break
+            finally:
+                await page.close()
+                current_page += 1
+        
+        # 2. Scrape chi tiết theo Batch sạch
+        return await self.scrape_many_batched(all_filtered_urls)
 
