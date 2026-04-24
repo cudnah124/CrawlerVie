@@ -1,8 +1,6 @@
 import asyncio
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import urljoin, urlparse, urlunparse
-from bs4 import BeautifulSoup
 from playwright.async_api import Page as AsyncPage
 
 from crawlerai.core.engine import BaseAsyncCrawler
@@ -39,7 +37,7 @@ def _find_ad_data(next_data: dict) -> dict | None:
                 return val
 
         return None
-    except:
+    except Exception:
         return None
 
 
@@ -49,7 +47,7 @@ def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
     list_time = ad_data.get("list_time")
     try:
         posting_date = datetime.fromtimestamp(list_time / 1000).strftime("%Y-%m-%d %H:%M:%S") if list_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    except:
+    except Exception:
         posting_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Xử lý seller (có thể là key con hoặc nằm trực tiếp trong ad_data)
@@ -187,7 +185,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         if not await self._wait_for_next_data(page):
             try:
                 title = await page.title()
-            except:
+            except Exception:
                 title = "?"
             print(f"    ✗ __NEXT_DATA__ not found — title: '{title}'")
             return None
@@ -211,7 +209,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                     await btn.click(timeout=3000, force=True)
                     await page.wait_for_timeout(1000)
                     break
-            except:
+            except Exception:
                 continue
 
         # Step 3b: JS fallback — tìm tel: link hoặc text số điện thoại
@@ -242,7 +240,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 }
                 return null;
             }""")
-        except:
+        except Exception:
             pass
 
         # Step 4: Extract __NEXT_DATA__
@@ -257,8 +255,6 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         if not ad_data:
             if next_data:
                 pp = next_data.get("props", {}).get("pageProps", {})
-                init = pp.get("initialState", {})
-                adview = init.get("adView", {})
                 print(f"    ✗ ad_data not found: {url.split('/')[-1][:50]}")
             return None
 

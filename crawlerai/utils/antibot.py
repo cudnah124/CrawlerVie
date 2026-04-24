@@ -31,7 +31,7 @@ class AntiBotManager:
                 try:
                     shutil.rmtree(profile_dir)
                     break
-                except:
+                except Exception:
                     await asyncio.sleep(1)
 
     @staticmethod
