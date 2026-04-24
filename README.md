@@ -47,10 +47,10 @@ cp .env.example .env
 3. **Run your first crawl**:
 ```bash
 # AI Mode: Just describe what you want
-python main.py ai https://news.ycombinator.com --instruction "Extract titles and URLs of all stories"
+crawlerai llm https://news.ycombinator.com --instruction "Extract titles and URLs of all stories"
 
 # CSS Mode: Fast and repeatable
-python main.py css https://news.ycombinator.com --schema schemas/hackernews_css.json
+crawlerai schema https://news.ycombinator.com --schema schemas/hackernews_css.json
 ```
 
 ## ✨ Core Features
@@ -94,9 +94,9 @@ python main.py css https://news.ycombinator.com --schema schemas/hackernews_css.
 
 Dont want to write JSON selectors? Let the LLM do it once:
 ```bash
-python main.py schema-gen https://example.com/listings \
+crawlerai gen https://example.com/listings \
   --query "All product names, prices and image links" \
-  --schema-output schemas/my_new_site.json
+  --save-to schemas/my_new_site.json
 ```
 </details>
 
@@ -106,10 +106,10 @@ python main.py schema-gen https://example.com/listings \
 Get all details including the hidden seller phone number:
 ```bash
 # Single ad
-python main.py nhatot https://www.nhatot.com/.../ad_id.htm
+crawlerai nhatot https://www.nhatot.com/.../ad_id.htm
 
 # Listing page (scrapes multiple)
-python main.py nhatot-list https://www.nhatot.com/mua-ban-bat-dong-san --limit 20
+crawlerai nhatot-list https://www.nhatot.com/mua-ban-bat-dong-san --limit 20
 ```
 </details>
 
@@ -118,7 +118,7 @@ python main.py nhatot-list https://www.nhatot.com/mua-ban-bat-dong-san --limit 2
 
 For React/Vue sites that need time to render:
 ```bash
-python main.py css https://myspa.com --wait-for "div.results-list"
+crawlerai schema https://myspa.com --wait-for "div.results-list"
 ```
 </details>
 

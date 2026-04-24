@@ -75,6 +75,7 @@ Dự án hiện hỗ trợ lệnh `crawlerai` trực tiếp (sau khi cài đặt
 - **Schema Crawl**: `crawlerai schema <URL> --schema schemas/mysite.json`
 - **Gen Schema**: `crawlerai gen <URL> -q "all prices and titles"`
 - **NhaTot**: `crawlerai nhatot <URL>`
+- **NhaTot List**: `crawlerai nhatot-list <URL> --limit 10`
 
 ---
 <div align="center">
