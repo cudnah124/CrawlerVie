@@ -97,6 +97,21 @@ def parse_vietnamese_time(time_str: str | None) -> datetime | None:
     return None
 
 
+def clean_text(text: str | None) -> str:
+    """
+    Xóa các icon, emoji và ký tự đặc biệt gây nhiễu khỏi chuỗi văn bản.
+    """
+    if not text:
+        return ""
+    emoji_pattern = re.compile(
+        "["
+        "\U00010000-\U0010FFFF" # Emojis (non-BMP)
+        "\u2600-\u27BF"         # Miscellaneous symbols
+        "\u2300-\u23FF"         # Technical symbols
+        "]+", flags=re.UNICODE)
+    return emoji_pattern.sub(r'', text).strip()
+
+
 # ── Stealth helpers ────────────────────────────────────────────────────────────
 
 def _apply_stealth(page) -> None:
@@ -389,7 +404,7 @@ def _build_info(ad_data: dict, phone_text: str | None = None) -> dict:
             "list_id":    ad_data.get("list_id"),
             "account_id": ad_data.get("account_id"),
         },
-        "title":       ad_data.get("subject"),
+        "title":       clean_text(ad_data.get("subject")),
         "description": ad_data.get("body"),
         "category": {
             "category":      ad_data.get("category"),
@@ -437,7 +452,9 @@ def _build_info(ad_data: dict, phone_text: str | None = None) -> dict:
             "videos": ad_data.get("videos", []),
         },
         "meta": {
+            "ad_url":    ad_url,
             "list_time": ad_data.get("list_time"),
+            "view_count": ad_data.get("view_count") or ad_data.get("total_views") or 0,
             "state":     ad_data.get("state"),
             "status":    ad_data.get("status"),
             "type":      ad_data.get("type"),
@@ -1046,9 +1063,10 @@ class AsyncNhaTotCrawler:
         list_url: str,
         max_pages: int = 5,
         limit: int = 50,
+        batch_size: int = 5,
     ) -> list[dict]:
         """
-        Crawl các tin đăng từ trang danh sách với giới hạn số lượng tin.
+        Crawl các tin đăng từ trang danh sách với giới hạn số lượng tin và batching.
         Sử dụng chiến thuật reset session cho mỗi trang listing để bypass CF.
         """
         all_filtered_urls = []
@@ -1132,5 +1150,86 @@ class AsyncNhaTotCrawler:
                 await page.close()
                 current_page += 1
         
-        return await self.scrape_many_batched(all_filtered_urls)
+        return await self.scrape_many_batched(all_filtered_urls, batch_size=batch_size)
+
+    async def crawl_to_csv(
+        self,
+        list_url: str,
+        output_file: str = "nhatot_exported.csv",
+        max_pages: int = 5,
+        limit: int = 50,
+        batch_size: int = 5
+    ) -> list[dict]:
+        """
+        Phương thức TẤT-CẢ-TRONG-MỘT:
+        Quét danh sách -> Scrape chi tiết -> Xuất toàn bộ dữ liệu ra CSV.
+        """
+        print(f"[AsyncNhaTotCrawler] Starting full crawl to CSV: {output_file}")
+        
+        # 1. Scrape data
+        results = await self.scrape_listings_today(list_url, max_pages=max_pages, limit=limit, batch_size=batch_size)
+        
+        if not results:
+            print("[AsyncNhaTotCrawler] No results to export.")
+            return []
+
+        # 2. Định nghĩa toàn bộ headers khả thi (Flat schema)
+        headers = [
+            "ad_id", "list_id", "ad_url", "title", "category_name",
+            "price", "price_string", "price_per_m2",
+            "area", "area_unit", "width", "length",
+            "rooms", "toilets", "floors", "house_type", "furnishing", "legal",
+            "street_name", "ward_name", "area_name", "region_name",
+            "latitude", "longitude",
+            "seller_name", "seller_phone", "is_company",
+            "view_count", "posting_date", "status", "images"
+        ]
+
+        try:
+            with open(output_file, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(headers)
+                
+                for ad in results:
+                    # Flattening data
+                    row = [
+                        ad.get("id", {}).get("ad_id"),
+                        ad.get("id", {}).get("list_id"),
+                        ad.get("meta", {}).get("ad_url"),
+                        ad.get("title"),
+                        ad.get("category", {}).get("category_name"),
+                        ad.get("price", {}).get("price"),
+                        ad.get("price", {}).get("price_string"),
+                        ad.get("price", {}).get("price_million_per_m2"),
+                        ad.get("size", {}).get("size"),
+                        ad.get("size", {}).get("size_unit"),
+                        ad.get("size", {}).get("width"),
+                        ad.get("size", {}).get("length"),
+                        ad.get("rooms", {}).get("rooms"),
+                        ad.get("rooms", {}).get("toilets"),
+                        ad.get("rooms", {}).get("floors"),
+                        ad.get("rooms", {}).get("house_type"),
+                        ad.get("rooms", {}).get("furnishing_sell"),
+                        ad.get("legal", {}).get("property_legal_document"),
+                        ad.get("location", {}).get("street_name"),
+                        ad.get("location", {}).get("ward_name"),
+                        ad.get("location", {}).get("area_name"),
+                        ad.get("location", {}).get("region_name"),
+                        ad.get("location", {}).get("latitude"),
+                        ad.get("location", {}).get("longitude"),
+                        ad.get("seller", {}).get("account_name"),
+                        ad.get("seller", {}).get("phone"),
+                        ad.get("seller", {}).get("company_ad"),
+                        ad.get("meta", {}).get("view_count"),
+                        ad.get("posting_date"),
+                        ad.get("meta", {}).get("status"),
+                        ",".join(ad.get("media", {}).get("images", []))
+                    ]
+                    writer.writerow(row)
+            
+            print(f"[AsyncNhaTotCrawler] Successfully exported {len(results)} items to {output_file}")
+        except Exception as e:
+            print(f"[AsyncNhaTotCrawler] Export error: {e}")
+            
+        return results
 
