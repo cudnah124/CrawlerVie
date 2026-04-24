@@ -4,7 +4,7 @@ import os
 import csv
 import re
 from datetime import datetime, timedelta
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 from bs4 import BeautifulSoup
 from playwright.async_api import Page as AsyncPage
 
@@ -13,29 +13,71 @@ from crawlerai.utils.antibot import AntiBotManager
 from crawlerai.utils.exporter import DataExporter
 
 
+def _strip_fragment(url: str) -> str:
+    """Bỏ fragment (#...) khỏi URL để tránh tracking params phá vỡ Next.js."""
+    parsed = urlparse(url)
+    return urlunparse(parsed._replace(fragment=''))
+
+
 def _find_ad_data(next_data: dict) -> dict | None:
+    """Tìm ad_data trong Next.js payload. Key đúng là adView.adInfo."""
     try:
-        props = next_data.get("props", {})
-        page_props = props.get("pageProps", {})
-        return page_props.get("initialState", {}).get("adView", {}).get("ad", {}) or page_props.get("adData", {})
+        pp = next_data.get("props", {}).get("pageProps", {})
+        adview = pp.get("initialState", {}).get("adView", {})
+
+        # Đường dẫn chính xác: initialState -> adView -> adInfo
+        ad_info = adview.get("adInfo", {})
+        if isinstance(ad_info, dict):
+            # adInfo có thể chứa 'ad' hoặc chính là ad object
+            if ad_info.get("ad_id"):
+                return ad_info
+            ad = ad_info.get("ad")
+            if isinstance(ad, dict) and ad.get("ad_id"):
+                return ad
+
+        # Fallback: tìm trong các key khác của pageProps
+        for key in ["adData", "ad", "data"]:
+            val = pp.get(key)
+            if isinstance(val, dict) and val.get("ad_id"):
+                return val
+
+        return None
     except:
         return None
 
 
 def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
+    """Build output dictionary đầy đủ từ ad_data payload — khớp schema phiên bản cũ."""
+    # Chuyển list_time (ms timestamp) → chuỗi ngày giờ
+    list_time = ad_data.get("list_time")
+    try:
+        posting_date = datetime.fromtimestamp(list_time / 1000).strftime("%Y-%m-%d %H:%M:%S") if list_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        posting_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     return {
-        "id":    {"ad_id": ad_data.get("ad_id"), "list_id": ad_data.get("list_id")},
-        "title": AntiBotManager.clean_emojis(ad_data.get("subject")),
+        "id": {
+            "ad_id":      ad_data.get("ad_id"),
+            "list_id":    ad_data.get("list_id"),
+            "account_id": ad_data.get("account_id"),
+        },
+        "title":       AntiBotManager.clean_emojis(ad_data.get("subject")),
+        "description": ad_data.get("body"),
+        "category": {
+            "category":      ad_data.get("category"),
+            "category_name": ad_data.get("category_name"),
+        },
         "price": {
             "price":                ad_data.get("price"),
             "price_string":         ad_data.get("price_string"),
             "price_million_per_m2": ad_data.get("price_million_per_m2"),
         },
         "size": {
-            "size":      ad_data.get("size"),
-            "size_unit": ad_data.get("size_unit_string"),
-            "width":     ad_data.get("width"),
-            "length":    ad_data.get("length"),
+            "size":        ad_data.get("size"),
+            "size_unit":   ad_data.get("size_unit_string"),
+            "width":       ad_data.get("width"),
+            "length":      ad_data.get("length"),
+            "living_size": ad_data.get("living_size"),
         },
         "rooms": {
             "rooms":           ad_data.get("rooms"),
@@ -44,27 +86,40 @@ def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
             "house_type":      ad_data.get("house_type"),
             "furnishing_sell": ad_data.get("furnishing_sell"),
         },
-        "legal":    {"property_legal_document": ad_data.get("property_legal_document")},
+        "legal": {
+            "property_legal_document": ad_data.get("property_legal_document"),
+        },
         "location": {
-            "ward_name":   ad_data.get("ward_name"),
-            "area_name":   ad_data.get("area_name"),
-            "region_name": ad_data.get("region_name"),
-            "latitude":    ad_data.get("latitude"),
-            "longitude":   ad_data.get("longitude"),
+            "street_number": ad_data.get("street_number"),
+            "street_name":   ad_data.get("street_name"),
+            "ward_name":     ad_data.get("ward_name"),
+            "area_name":     ad_data.get("area_name"),
+            "region_name":   ad_data.get("region_name"),
+            "latitude":      ad_data.get("latitude"),
+            "longitude":     ad_data.get("longitude"),
         },
         "seller": {
             "account_name": ad_data.get("account_name"),
+            "avatar":       ad_data.get("avatar"),
             "phone":        phone or ad_data.get("phone"),
             "company_ad":   ad_data.get("company_ad"),
         },
+        "media": {
+            "images": ad_data.get("images", []),
+            "videos": ad_data.get("videos", []),
+        },
         "meta": {
             "ad_url":     ad_url,
-            "view_count": ad_data.get("view_count") or 0,
+            "list_time":  list_time,
+            "view_count": ad_data.get("view_count") or ad_data.get("total_views") or 0,
+            "state":      ad_data.get("state"),
             "status":     ad_data.get("status"),
+            "type":       ad_data.get("type"),
         },
-        "posting_date": ad_data.get("list_time") or datetime.now().strftime("%Y-%m-%d"),
-        "media": {"images": ad_data.get("images", [])},
+        "params":       ad_data.get("ad_params") or ad_data.get("params") or [],
+        "posting_date": posting_date,
     }
+
 
 
 # ── Logging helpers ────────────────────────────────────────────────────────────
@@ -112,29 +167,86 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             await page.wait_for_timeout(1000)
 
     async def _parse_page(self, page: AsyncPage, url: str) -> dict | None:
+        # Step 1: Navigate
         try:
             await page.goto(url, wait_until="load", timeout=self.timeout)
-            if not await self._wait_for_next_data(page):
-                return None
-            for sel in ["button.b1b6q6wa.primary.r-normal.large.w-bold", ".ShowPhoneButton_phone__18a_n"]:
-                try:
-                    btn = page.locator(sel).first
-                    if await btn.is_visible():
-                        await btn.click(timeout=3000)
-                        break
-                except:
-                    continue
-            await page.wait_for_timeout(500)
-            phone = None
-            try:
-                phone = await page.inner_text(".b14cwtpv.link.r-normal.small.w-bold.t-link span", timeout=2000)
-            except:
-                pass
-            next_data = await page.evaluate("() => window.__NEXT_DATA__ || null")
-            ad_data = _find_ad_data(next_data) if next_data else {}
-            return _build_info(ad_data, phone, url) if ad_data else None
-        except:
+        except Exception as e:
+            print(f"    ✗ goto failed: {e}")
             return None
+
+        # Step 2: Wait for __NEXT_DATA__
+        if not await self._wait_for_next_data(page):
+            try:
+                title = await page.title()
+            except:
+                title = "?"
+            print(f"    ✗ __NEXT_DATA__ not found — title: '{title}'")
+            return None
+
+        # Step 3: Reveal phone — click nút "Hiện số" với nhiều selector
+        _phone_btn_selectors = [
+            "button.b1b6q6wa.primary.r-normal.large.w-bold",
+            "[class*='LeadButton__showPhoneButton__'] button",
+            "[class*='ShowPhoneButton_wrapper__'] button",
+            ".InlineShowPhoneButton_linkContact__U_lEr",
+            "button.b14cwtpv.link.r-normal.small.w-bold.t-link",
+        ]
+        for sel in _phone_btn_selectors:
+            try:
+                btn = page.locator(sel).first
+                if await btn.is_visible(timeout=1000):
+                    await btn.click(timeout=3000)
+                    await page.wait_for_timeout(800)
+                    break
+            except:
+                continue
+
+        # Step 3b: JS fallback — tìm tel: link trực tiếp
+        phone = None
+        try:
+            phone = await page.evaluate(r"""() => {
+                const tel = document.querySelector('a[href^="tel:"]');
+                if (tel) {
+                    const d = tel.getAttribute('href').replace('tel:', '').replace(/\D/g, '');
+                    if (d.length >= 9 && d.length <= 11 && !d.startsWith('1900')) return d;
+                }
+                const selectors = [
+                    '.b14cwtpv.link.r-normal.small.w-bold.t-link span',
+                    '.ShowPhoneButton_phone__18a_n',
+                    '.InlineShowPhoneButton_phoneHidden__4KcON',
+                ];
+                for (const s of selectors) {
+                    const el = document.querySelector(s);
+                    if (el) {
+                        const digits = (el.textContent || '').replace(/\D/g, '');
+                        if (digits.length >= 9 && digits.length <= 11 && !digits.startsWith('1900'))
+                            return digits;
+                    }
+                }
+                return null;
+            }""")
+        except:
+            pass
+
+        # Step 4: Extract __NEXT_DATA__
+        try:
+            next_data = await page.evaluate("() => window.__NEXT_DATA__ || null")
+        except Exception as e:
+            print(f"    ✗ evaluate failed: {e}")
+            return None
+
+        # Step 5: Parse ad_data
+        ad_data = _find_ad_data(next_data) if next_data else {}
+        if not ad_data:
+            if next_data:
+                pp = next_data.get("props", {}).get("pageProps", {})
+                init = pp.get("initialState", {})
+                adview = init.get("adView", {})
+                print(f"    ✗ ad_data not found: {url.split('/')[-1][:50]}")
+            return None
+
+        return _build_info(ad_data, phone, url)
+
 
     async def scrape_many(self, urls: list[str], concurrency: int = 5) -> list[dict]:
         sem = asyncio.Semaphore(concurrency)
@@ -201,7 +313,8 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 )
                 for h in hrefs:
                     if h and ".htm" in h and "/mua-ban" in h:
-                        full = urljoin(list_url, h)
+                        # Strip fragment (#px=...) trước khi lưu
+                        full = _strip_fragment(urljoin(list_url, h))
                         if full not in all_urls:
                             all_urls.append(full)
                             page_found += 1
@@ -236,23 +349,22 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         flattened = []
         for ad in results:
             flattened.append({
-                "ad_id":         ad.get("id", {}).get("ad_id"),
-                "url":           ad.get("meta", {}).get("ad_url"),
-                "title":         ad.get("title"),
-                "price":         ad.get("price", {}).get("price"),
-                "price_string":  ad.get("price", {}).get("price_string"),
-                "price_per_m2":  ad.get("price", {}).get("price_million_per_m2"),
-                "area":          ad.get("size", {}).get("size"),
-                "area_unit":     ad.get("size", {}).get("size_unit"),
-                "rooms":         ad.get("rooms", {}).get("rooms"),
-                "toilets":       ad.get("rooms", {}).get("toilets"),
-                "floors":        ad.get("rooms", {}).get("floors"),
-                "ward":          ad.get("location", {}).get("ward_name"),
-                "district":      ad.get("location", {}).get("area_name"),
-                "city":          ad.get("location", {}).get("region_name"),
-                "phone":         ad.get("seller", {}).get("phone"),
-                "views":         ad.get("meta", {}).get("view_count"),
-                "date":          ad.get("posting_date"),
+                "ID Ad":         ad.get("id", {}).get("ad_id"),
+                "Title":         ad.get("title"),
+                "Property Type": ad.get("category", {}).get("category_name"),
+                "Price Value":   ad.get("price", {}).get("price"),
+                "Area (m2)":     ad.get("size", {}).get("size"),
+                "Price_per_m2":  ad.get("price", {}).get("price_million_per_m2"),
+                "Ward":          ad.get("location", {}).get("ward_name"),
+                "District":      ad.get("location", {}).get("area_name"),
+                "City":          ad.get("location", {}).get("region_name"),
+                "Rooms":         ad.get("rooms", {}).get("rooms"),
+                "Toilets":       ad.get("rooms", {}).get("toilets"),
+                "Floors":        ad.get("rooms", {}).get("floors"),
+                "Views":         ad.get("meta", {}).get("view_count"),
+                "Posting Date":  ad.get("posting_date"),
+                "Link":          ad.get("meta", {}).get("ad_url"),
+                "Phone":         ad.get("seller", {}).get("phone"), # Thêm cả phone vì hữu ích
             })
 
         DataExporter.to_csv(flattened, output_file)
