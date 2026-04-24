@@ -46,23 +46,30 @@ class AntiBotManager:
     @staticmethod
     def parse_vn_time(time_str: str | None) -> datetime | None:
         """Helper dùng chung để xử lý thời gian tiếng Việt (nếu cần)."""
-        if not time_str: return None
+        if not time_str:
+            return None
         time_str = time_str.lower()
         now = datetime.now()
-        if 'vừa xong' in time_str: return now
+        if 'vừa xong' in time_str:
+            return now
         match = re.search(r'(\d+)\s+phút\s+trước', time_str)
-        if match: return now - timedelta(minutes=int(match.group(1)))
+        if match:
+            return now - timedelta(minutes=int(match.group(1)))
         match = re.search(r'(\d+)\s+giờ\s+trước', time_str)
-        if match: return now - timedelta(hours=int(match.group(1)))
-        if 'hôm qua' in time_str: return now - timedelta(days=1)
+        if match:
+            return now - timedelta(hours=int(match.group(1)))
+        if 'hôm qua' in time_str:
+            return now - timedelta(days=1)
         match = re.search(r'(\d+)\s+ngày\s+trước', time_str)
-        if match: return now - timedelta(days=int(match.group(1)))
+        if match:
+            return now - timedelta(days=int(match.group(1)))
         return None
 
     @staticmethod
     def clean_emojis(text: str | None) -> str:
         """Xóa icon/emoji gây nhiễu dữ liệu."""
-        if not text: return ""
+        if not text:
+            return ""
         emoji_pattern = re.compile(
             "["
             "\U00010000-\U0010FFFF"
