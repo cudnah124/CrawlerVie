@@ -663,494 +663,151 @@ class AsyncNhaTotCrawler:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/124.0.0.0 Safari/537.36"
         )
-        # launch_persistent_context = browser + context trong 1 — giống crawl4ai
-        self._context = await self._pw.chromium.launch_persistent_context(
-            self._user_data_dir,
-            headless=self.headless,
-            args=_ARGS,
-            user_agent=_UA,
-            viewport={"width": 1920, "height": 1080},
-            locale="vi-VN",
-            timezone_id="Asia/Ho_Chi_Minh",
-            extra_http_headers={
-                "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-                "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-            },
-        )
-        # Navigator override ở init script — tương tự crawl4ai navigator_overrider.js
-        await self._context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined, configurable: true,
-            });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5], configurable: true,
-            });
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['vi-VN', 'vi', 'en-US', 'en'], configurable: true,
-            });
-            window.chrome = { runtime: {} };
-        """)
-        self.ready = True
-        print(f"[AsyncNhaTotCrawler] Persistent browser started "
-              f"(headless={self.headless}, profile={self._user_data_dir})")
-        return self
+from crawlerai.core.engine import BaseAsyncCrawler
+from crawlerai.utils.exporter import DataExporter
 
-    async def close(self) -> None:
-        """Đóng browser và giải phóng resources."""
-        if self._context:
-            await self._context.close()
-        if self._browser:
-            await self._browser.close()
-        if self._pw:
-            await self._pw.stop()
-        self.ready = False
+class AsyncNhaTotCrawler(BaseAsyncCrawler):
+    """
+    Crawler chuyên biệt cho NhaTot.com, kế thừa sức mạnh từ BaseAsyncCrawler.
+    """
 
-    async def restart_session(self) -> None:
-        """
-        Đóng session cũ, xóa sạch profile rác trên đĩa và khởi động session mới.
-        Chiến thuật này cực kỳ hiệu quả để bypass Cloudflare khi scrape nhiều trang.
-        """
-        # 1. Close current context/pw
-        if self._context:
-            await self._context.close()
-        if self._pw:
-            await self._pw.stop()
-        
-        # 2. Xóa sạch Profile cũ qua AntiBotManager
-        await AntiBotManager.clean_profile(self._user_data_dir)
-        
-        # 3. Start fresh
-        await self.start()
+    # ── Internal methods ───────────────────────────────────────────────────────
 
-    async def __aenter__(self) -> "AsyncNhaTotCrawler":
-        return await self.start()
-
-    async def __aexit__(self, *_) -> None:
-        await self.close()
-
-    # ── Internal page helpers (async versions) ─────────────────────────────────
-
-    async def _new_page(self) -> AsyncPage:
-        """Tạo page mới từ shared context (UA + viewport + navigator override đã set sẵn)."""
-        if not self.ready:
-            await self.start()
-        page = await self._context.new_page()
-        # Stealth ở page level — bổ sung thêm cho init_script ở context level
-        await _apply_stealth_async(page)
-        return page
-
-    async def _wait_for_next_data(self, page: AsyncPage, max_wait_ms: int = 60_000) -> bool:
-        """Poll async cho đến khi ``__NEXT_DATA__`` xuất hiện.
-
-        Dùng JS eval thay vì DOM locator để nhanh và chính xác hơn —
-        vì locator của Playwright phụ thuộc vào selector engine có thể bị
-        chặn khi browser detect automation.
-        """
+    async def _wait_for_next_data(self, page, max_wait_ms: int = 180_000) -> bool:
+        """Sử dụng logic của base để đợi dữ liệu Next.js."""
         start = datetime.now()
         while True:
-            try:
-                ok = await page.evaluate(
-                    "() => !!(window.__NEXT_DATA__ && window.__NEXT_DATA__.props)"
-                )
-                if ok:
-                    return True
-            except Exception:
-                pass
+            if await page.locator("#__NEXT_DATA__").count() > 0:
+                return True
             elapsed_ms = int((datetime.now() - start).total_seconds() * 1000)
             if elapsed_ms >= max_wait_ms:
                 return False
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(2000)
 
-    async def _try_reveal_phone_async(self, page: AsyncPage) -> None:
-        """Thử click nút hiện số bất đồng bộ (best-effort)."""
+    async def _try_reveal_phone_async(self, page) -> bool:
+        """Click 'Hiện số' bất đồng bộ."""
         css_selectors = [
             "button.b1b6q6wa.primary.r-normal.large.w-bold",
             "[class*='LeadButton__showPhoneButton__'] button",
-            "[class*='ShowPhoneButton_wrapper__'] button",
-            ".InlineShowPhoneButton_phoneHidden__4KcON",
-            "button.b14cwtpv.link.r-normal.small.w-bold.t-link",
+            "button.b14cwtpv.link.r-normal.small.w-bold.t-link"
         ]
         for sel in css_selectors:
             try:
-                loc = page.locator(sel)
-                if await loc.count() > 0:
-                    await loc.first.click(timeout=3000, force=True)
-                    await page.wait_for_timeout(800)
-                    return
-            except Exception:
+                btn = page.locator(sel).first
+                if await btn.is_visible():
+                    await btn.click(timeout=5000)
+                    return True
+            except:
                 continue
-        # Last resort: JS click
-        try:
-            await page.evaluate(r"""() => {
-                const el = document.querySelector('button.b1b6q6wa.primary.r-normal.large.w-bold')
-                    || document.querySelector("[class*='LeadButton__showPhoneButton__'] button")
-                    || document.querySelector('.b14cwtpv.link.r-normal.small.w-bold.t-link');
-                if (el) el.click();
-            }""")
-            await page.wait_for_timeout(1000)
-        except Exception:
-            pass
+        return False
 
-    async def _extract_phone_async(self, page: AsyncPage) -> str | None:
-        """Trích phone từ DOM sau khi click nút hiện số."""
-        try:
-            result = await page.evaluate(r"""() => {
-                const tel = document.querySelector('a[href^="tel:"]');
-                if (tel) {
-                    const d = tel.getAttribute('href').replace('tel:', '').replace(/\D/g, '');
-                    if (d.length >= 10 && d.length <= 11 && !d.startsWith('1900')) return d;
-                }
-                const btn = document.querySelector('button.b1b6q6wa.primary.r-normal.large.w-bold')
-                    || document.querySelector("[class*='LeadButton__showPhoneButton__'] button")
-                    || document.querySelector('.InlineShowPhoneButton_linkContact__U_lEr')
-                    || document.querySelector('.b14cwtpv.link.r-normal.small.w-bold.t-link');
-                if (!btn) return null;
-                const digits = (btn.textContent || '').replace(/\D/g, '');
-                return (digits.length >= 10 && digits.length <= 11 && !digits.startsWith('1900'))
-                    ? digits : null;
-            }""")
-            return result
-        except Exception:
-            return None
+    async def _extract_phone_async(self, page) -> str | None:
+        """Trích xuất số điện thoại từ DOM."""
+        selectors = [
+            ".b14cwtpv.link.r-normal.small.w-bold.t-link span",
+            ".ShowPhoneButton_phone__18a_n",
+            ".InlineShowPhoneButton_phoneHidden__4KcON"
+        ]
+        for sel in selectors:
+            try:
+                text = await page.inner_text(sel, timeout=3000)
+                if text and any(c.isdigit() for c in text):
+                    return text.strip()
+            except:
+                continue
+        return None
 
     async def _parse_page(self, page: AsyncPage, url: str) -> dict | None:
-        """Điều phối: navigate → wait __NEXT_DATA__ → reveal phone → parse."""
+        """Điều phối việc trích xuất một trang ad chi tiết."""
         try:
-            # Dùng 'load' thay vì 'domcontentloaded' để Next.js kịp hydrate
             await page.goto(url, wait_until="load", timeout=self.timeout)
-        except Exception as exc:
-            print(f"[AsyncNhaTotCrawler] Navigate error {url}: {exc}")
+        except Exception:
             return None
 
-        # Poll tối đa timeout ms, nhưng thường xong sau 2-5s
-        if not await self._wait_for_next_data(page, max_wait_ms=min(self.timeout, 30_000)):
-            print(f"[AsyncNhaTotCrawler] __NEXT_DATA__ not found: {url}")
-            # Debug: in title để biết có bị block không
-            try:
-                title = await page.title()
-                print(f"[AsyncNhaTotCrawler] Page title: '{title}'")
-            except Exception:
-                pass
+        if not await self._wait_for_next_data(page, max_wait_ms=30000):
             return None
 
         await page.wait_for_timeout(1000)
         await self._try_reveal_phone_async(page)
-        await page.wait_for_timeout(500)
         phone = await self._extract_phone_async(page)
 
         try:
             next_data = await page.evaluate("() => window.__NEXT_DATA__ || null")
-        except Exception:
+        except:
             next_data = None
 
-        if not next_data:
-            html_content = await page.content()
-            soup = BeautifulSoup(html_content, "html.parser")
-            tag = soup.find("script", {"id": "__NEXT_DATA__"})
-            if not tag:
-                return None
-            try:
-                next_data = json.loads(tag.string or tag.text)
-            except json.JSONDecodeError:
-                return None
+        ad_data = _find_ad_data(next_data) if next_data else {}
+        if not ad_data: return None
 
-        ad_data = _find_ad_data(next_data) or {}
-        if not ad_data:
-            return None
-
-        return _build_info(ad_data, phone)
+        return _build_info(ad_data, phone, url)
 
     # ── Public async API ───────────────────────────────────────────────────────
 
     async def scrape_ad(self, url: str) -> dict | None:
-        """
-        Crawl một NhaTot ad bất đồng bộ (headless).
-
-        Args:
-            url: URL của ad NhaTot.
-
-        Returns:
-            Dict có cấu trúc giống :func:`scrape_ad` (sync), hoặc ``None``.
-        """
-        page = await self._new_page()
+        """Crawl một ad NhaTot."""
+        page = await self.get_new_page()
         try:
             return await self._parse_page(page, url)
         finally:
             await page.close()
 
-    async def scrape_many(
-        self,
-        urls: list[str],
-        concurrency: int = 5,
-    ) -> list[dict]:
-        """
-        Crawl nhiều ad đồng thời — không thể làm với Sync+Headed.
-
-        Dùng semaphore để giới hạn số tab mở cùng lúc (giống crawl4ai
-        ``MemoryAdaptiveDispatcher`` nhưng đơn giản hơn).
-
-        Args:
-            urls:        Danh sách URL cần crawl.
-            concurrency: Số tab chạy song song (mặc định 5).
-
-        Returns:
-            Danh sách dict ad (bỏ qua các URL lỗi).
-
-        Example::
-
-            async with AsyncNhaTotCrawler() as crawler:
-                ads = await crawler.scrape_many(
-                    [url1, url2, url3, url4, url5],
-                    concurrency=3,
-                )
-        """
+    async def scrape_many(self, urls: list[str], concurrency: int = 5) -> list[dict]:
+        """Crawl nhiều ad đồng thời."""
         sem = asyncio.Semaphore(concurrency)
-
         async def _bounded(url: str) -> dict | None:
             async with sem:
-                page = await self._new_page()
+                page = await self.get_new_page()
                 try:
                     return await self._parse_page(page, url)
                 finally:
                     await page.close()
-
         results = await asyncio.gather(*[_bounded(u) for u in urls])
         return [r for r in results if r is not None]
 
-    async def scrape_many_batched(
-        self,
-        urls: list[str],
-        batch_size: int = 5,
-        delay_between_batches: float = 3.0,
-    ) -> list[dict]:
-        """
-        Crawl hàng loạt tin đăng theo batch, mỗi batch khởi động lại session mới.
-        Đây là chức năng chính giúp tránh bị Cloudflare tracking khi crawl số lượng lớn.
-        """
+    async def scrape_many_batched(self, urls: list[str], batch_size: int = 5, delay: float = 3.0) -> list[dict]:
+        """Crawl nhiều ad theo batch với reset session."""
         all_results = []
         for i in range(0, len(urls), batch_size):
             batch = urls[i:i+batch_size]
-            # Restart session trước mỗi batch
             await self.restart_session()
-            print(f"[AsyncNhaTotCrawler] Batch {i//batch_size + 1}: Scraping {len(batch)} URLs...")
-            
-            # Scrape batch này concurrently
+            print(f"[AsyncNhaTotCrawler] Batch {i//batch_size+1}...")
             results = await self.scrape_many(batch, concurrency=batch_size)
             all_results.extend(results)
-            
-            if i + batch_size < len(urls):
-                await asyncio.sleep(delay_between_batches)
-        
+            if i + batch_size < len(urls): await asyncio.sleep(delay)
         return all_results
 
-    async def scrape_listings(
-        self,
-        list_url: str,
-        limit: int = 10,
-        concurrency: int = 5,
-    ) -> list[dict]:
-        """
-        Crawl listing page (lấy links) rồi scrape các ad đồng thời.
-
-        Args:
-            list_url:    URL trang danh sách.
-            limit:       Số ad tối đa.
-            concurrency: Số tab song song khi scrape ad.
-
-        Returns:
-            Danh sách dict ad.
-        """
-        links: list[str] = []
-        page = await self._new_page()
-        try:
-            print(f"[AsyncNhaTotCrawler] Loading listing: {list_url} ...")
-            # Dùng 'load' để đảm bảo các script của Next.js đã khởi chạy
-            await page.goto(list_url, wait_until="load", timeout=self.timeout)
-            
-            # Đợi cho đến khi dữ liệu Next.js xuất hiện (dấu hiệu trang đã render xong)
-            if not await self._wait_for_next_data(page, max_wait_ms=15000):
-                print("[AsyncNhaTotCrawler] Warning: __NEXT_DATA__ not found on listing page. Trying to find links anyway...")
-            
-            await page.wait_for_timeout(3000)
-
-            for i in range(8):
-                hrefs = await page.evaluate(
-                    "() => Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href'))"
-                )
-                new_links_found = 0
-                for href in hrefs:
-                    if not href or ".htm" not in href:
-                        continue
-                    if "nhatot.com" not in href:
-                        href = urljoin(list_url, href)
-                    if "/mua-ban" not in href or href in links:
-                        continue
-                    links.append(href)
-                    new_links_found += 1
-                
-                print(f"[AsyncNhaTotCrawler] Scroll {i+1}: Found {len(links)} links so far...")
-                
-                if len(links) >= limit:
-                    break
-                
-                # Cuộn xuống để load thêm tin (lazy loading)
-                await page.evaluate("window.scrollBy(0, 1000)")
-                await page.wait_for_timeout(2000)
-        except Exception as exc:
-            print(f"[AsyncNhaTotCrawler] Listing error: {exc}")
-        finally:
-            await page.close()
-
-        return await self.scrape_many(links[:limit], concurrency=concurrency)
-
-    async def scrape_listings_today(
-        self,
-        list_url: str,
-        max_pages: int = 5,
-        limit: int = 50,
-        batch_size: int = 5,
-    ) -> list[dict]:
-        """
-        Crawl các tin đăng từ trang danh sách với giới hạn số lượng tin và batching.
-        Sử dụng chiến thuật reset session cho mỗi trang listing để bypass CF.
-        """
-        all_filtered_urls = []
+    async def scrape_listings_today(self, list_url: str, max_pages: int = 5, limit: int = 50, batch_size: int = 5) -> list[dict]:
+        """Trích xuất tin đăng mới."""
+        all_urls = []
         current_page = 1
-        keep_paging = True
-        
-        while current_page <= max_pages and keep_paging:
-            # 1. Fresh start cho mỗi trang listing
+        while current_page <= max_pages and len(all_urls) < limit:
             await self.restart_session()
             page_url = f"{list_url}?page={current_page}" if current_page > 1 else list_url
-            print(f"[AsyncNhaTotCrawler] Listing: Page {current_page} - {page_url}")
-            
-            page = await self._new_page()
+            page = await self.get_new_page()
             try:
-                ads = []
-                # Thử load trang, nếu 0 links thì retry 1 lần với load kĩ hơn
                 for attempt in range(2):
-                    wait_type = "domcontentloaded" if attempt == 0 else "load"
-                    try:
-                        await page.goto(page_url, wait_until=wait_type, timeout=60000)
-                    except Exception as e:
-                        print(f"[AsyncNhaTotCrawler] Page {current_page} navigation error: {e}")
-                        continue
-                    
-                    # Cuộn 2 lần để đảm bảo tin load đủ
-                    await page.evaluate("window.scrollBy(0, 800)")
-                    await page.wait_for_timeout(2000)
-                    await page.evaluate("window.scrollBy(0, 800)")
-                    await page.wait_for_timeout(2000)
-                    
-                    # Trích xuất links với selector rộng hơn
+                    await page.goto(page_url, wait_until="load" if attempt==1 else "domcontentloaded", timeout=60000)
+                    await AntiBotManager.human_like_scroll(page)
                     ads = await page.evaluate(r"""() => {
-                        const results = [];
-                        // Tìm tất cả anchor có thuộc tính itemprop="item" HOẶC chứa link .htm có dạng mua bán
-                        const anchors = Array.from(document.querySelectorAll('a'));
-                        anchors.forEach(a => {
-                            const href = a.getAttribute('href');
-                            if (!href || !href.includes('.htm')) return;
-                            if (!href.includes('/mua-ban-')) return;
-                            
-                            // Tránh lấy nhầm link logo hay link footer
-                            if (href.length < 20) return; 
-
-                            let text = '';
-                            // Ưu tiên lấy text từ container bọc ngoài (li hoặc div chứa tin)
-                            let container = a.closest('li') || a.closest('[class*="AdItem"]') || a.parentElement;
-                            if (container) text = container.innerText;
-                            
-                            // Kiểm tra lại nếu kết quả đã tồn tại
-                            if (!results.find(r => r.url === href)) {
-                                results.push({ url: href, innerText: text });
+                        const res = []; const seen = new Set();
+                        Array.from(document.querySelectorAll('a')).forEach(a => {
+                            const h = a.getAttribute('href') || "";
+                            if (h.includes('.htm') && (h.includes('/mua-ban') || h.includes('/cho-thue'))) {
+                                if (seen.has(h)) return; seen.add(h);
+                                res.push({ url: h });
                             }
                         });
-                        return results;
+                        return res;
                     }""")
-                    
-                    if len(ads) > 0:
-                        break
-                    print(f"[AsyncNhaTotCrawler] Page {current_page} attempt {attempt+1}: 0 ads found. Retrying...")
-
-                page_found = 0
+                    if ads: break
                 for ad in ads:
-                    url = urljoin(list_url, ad['url'])
-                    if url not in all_filtered_urls:
-                        all_filtered_urls.append(url)
-                        page_found += 1
-                        
-                    # Dừng nếu đã lấy đủ số lượng yêu cầu (cộng thêm 10% để trừ hao)
-                    if len(all_filtered_urls) >= limit:
-                        keep_paging = False
-                        break
-                
-                print(f"[AsyncNhaTotCrawler] Page {current_page}: Found {page_found} links. Total: {len(all_filtered_urls)}")
-                if len(ads) == 0:
-                     print(f"[AsyncNhaTotCrawler] Warning: Page {current_page} returned 0 ads.")
-                     keep_paging = False
-            except Exception as e:
-                print(f"[AsyncNhaTotCrawler] Error: {e}")
-                break
-            finally:
+                    u = urljoin(list_url, ad['url'])
+                    if u not in all_urls: all_urls.append(u)
+                    if len(all_urls) >= limit: break
+            except: break
+            finally: 
                 await page.close()
                 current_page += 1
-        
-        return await self.scrape_many_batched(all_filtered_urls, batch_size=batch_size)
-
-    async def crawl_to_csv(
-        self,
-        list_url: str,
-        output_file: str = "nhatot_exported.csv",
-        max_pages: int = 5,
-        limit: int = 50,
-        batch_size: int = 5
-    ) -> list[dict]:
-        """
-        Phương thức TẤT-CẢ-TRONG-MỘT:
-        Quét danh sách -> Scrape chi tiết -> Xuất toàn bộ dữ liệu ra CSV.
-        """
-        print(f"[AsyncNhaTotCrawler] Starting full crawl to CSV: {output_file}")
-        
-        # 1. Scrape data
-        results = await self.scrape_listings_today(list_url, max_pages=max_pages, limit=limit, batch_size=batch_size)
-        
-        if not results:
-            print("[AsyncNhaTotCrawler] No results to export.")
-            return []
-
-        # 2. Định nghĩa toàn bộ headers khả thi (Flat schema)
-        headers = [
-            "ad_id", "list_id", "ad_url", "title", "category_name",
-            "price", "price_string", "price_per_m2",
-            "area", "area_unit", "width", "length",
-            "rooms", "toilets", "floors", "house_type", "furnishing", "legal",
-            "street_name", "ward_name", "area_name", "region_name",
-            "latitude", "longitude",
-            "seller_name", "seller_phone", "is_company",
-            "view_count", "posting_date", "status", "images"
-        ]
-
-        try:
-            with open(output_file, "w", encoding="utf-8-sig", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(headers)
-                
-                for ad in results:
-                    # Flattening data
-                    row = [
-                        ad.get("id", {}).get("ad_id"),
-                        ad.get("id", {}).get("list_id"),
-                        ad.get("meta", {}).get("ad_url"),
-                        ad.get("title"),
-                        ad.get("category", {}).get("category_name"),
-                        ad.get("price", {}).get("price"),
-                        ad.get("price", {}).get("price_string"),
-                        ad.get("price", {}).get("price_million_per_m2"),
-                        ad.get("size", {}).get("size"),
-                        ad.get("size", {}).get("size_unit"),
-                        ad.get("size", {}).get("width"),
                         ad.get("size", {}).get("length"),
                         ad.get("rooms", {}).get("rooms"),
                         ad.get("rooms", {}).get("toilets"),
