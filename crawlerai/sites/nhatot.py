@@ -9,13 +9,13 @@ from crawlerai.utils.exporter import DataExporter
 
 
 def _strip_fragment(url: str) -> str:
-    """Bỏ fragment (#...) khỏi URL để tránh tracking params phá vỡ Next.js."""
+    """Loại bỏ fragment khỏi URL."""
     parsed = urlparse(url)
     return urlunparse(parsed._replace(fragment=''))
 
 
 def _find_ad_data(next_data: dict) -> dict | None:
-    """Tìm ad_data trong Next.js payload. Key đúng là adView.adInfo."""
+    """Tìm ad_data trong Next.js payload (adView.adInfo)."""
     try:
         pp = next_data.get("props", {}).get("pageProps", {})
         adview = pp.get("initialState", {}).get("adView", {})
@@ -42,23 +42,22 @@ def _find_ad_data(next_data: dict) -> dict | None:
 
 
 def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
-    """Build output dictionary đầy đủ từ ad_data payload — khớp schema phiên bản cũ."""
-    # Chuyển list_time (ms timestamp) → chuỗi ngày giờ
+    """Build output dictionary từ ad_data payload."""
     list_time = ad_data.get("list_time")
     try:
         posting_date = datetime.fromtimestamp(list_time / 1000).strftime("%Y-%m-%d %H:%M:%S") if list_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         posting_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Xử lý seller (có thể là key con hoặc nằm trực tiếp trong ad_data)
+    # Xử lý seller
     seller_data = ad_data.get("seller", {})
     account_name = ad_data.get("account_name") or seller_data.get("account_name")
     avatar = ad_data.get("avatar") or seller_data.get("avatar")
     company_ad = ad_data.get("company_ad") or seller_data.get("company_ad")
     
-    # Ưu tiên phone từ scraping (UI), sau đó tới trong ad_data, cuối cùng là trong seller_data
+    # Ưu tiên phone lấy được từ scraping, ad_data, hoặc seller_data
     final_phone = phone or ad_data.get("phone") or seller_data.get("phone")
-    # Nếu vẫn dính dấu * thì coi như chưa lấy được số thật
+    # Nếu vẫn có dấu * thì coi như chưa lấy được số thật
     if final_phone and "*" in str(final_phone):
         final_phone = None
 
@@ -174,14 +173,14 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             await page.wait_for_timeout(1000)
 
     async def _parse_page(self, page: AsyncPage, url: str) -> dict | None:
-        # Step 1: Navigate
+        # Điều hướng đến trang
         try:
             await page.goto(url, wait_until="load", timeout=self.timeout)
         except Exception as e:
             print(f"    ✗ goto failed: {e}")
             return None
 
-        # Step 2: Wait for __NEXT_DATA__
+        # Đợi __NEXT_DATA__ xuất hiện
         if not await self._wait_for_next_data(page):
             try:
                 title = await page.title()
@@ -190,7 +189,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             print(f"    ✗ __NEXT_DATA__ not found — title: '{title}'")
             return None
 
-        # Step 3: Reveal phone — click nút "Hiện số" với nhiều selector
+        # Thử click các nút hiện số điện thoại
         _phone_btn_selectors = [
             "button.b1b6q6wa.primary.r-normal.large.w-bold",
             "button[data-testid='lead-button']",
@@ -212,7 +211,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             except Exception:
                 continue
 
-        # Step 3b: JS fallback — tìm tel: link hoặc text số điện thoại
+        # Nếu không được, thử lấy số điện thoại qua JS
         phone = None
         try:
             phone = await page.evaluate(r"""() => {
@@ -243,14 +242,14 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         except Exception:
             pass
 
-        # Step 4: Extract __NEXT_DATA__
+        # Lấy __NEXT_DATA__ từ trang
         try:
             next_data = await page.evaluate("() => window.__NEXT_DATA__ || null")
         except Exception as e:
             print(f"    ✗ evaluate failed: {e}")
             return None
 
-        # Step 5: Parse ad_data
+        # Parse ad_data
         ad_data = _find_ad_data(next_data) if next_data else {}
         if not ad_data:
             if next_data:
@@ -357,7 +356,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             print("\n  ✗ No results to export.")
             return []
 
-        # ── Step 1: Deduplicate theo ad_id ──────────────────────────────────────
+        # Loại bỏ các tin trùng ad_id
         seen_ids: set = set()
         unique_results = []
         dup_count = 0
@@ -373,8 +372,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         if dup_count:
             print(f"  ℹ Removed {dup_count} duplicate ad(s) by ID. Keeping {len(unique_results)} unique.")
 
-        # ── Step 2: Flatten mỗi ad — base fields + dynamic params ───────────────
-        # Các cột cố định luôn xuất hiện đầu bảng
+        # Chuyển mỗi ad thành dict phẳng: base fields + dynamic params
         BASE_COLS = [
             "ID Ad", "Title", "Property Type",
             "Price Value", "Price String", "Price/m2 (trieu)",
@@ -432,9 +430,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 "Link":            mt.get("ad_url"),
             }
 
-            # ── Dynamic params ─────────────────────────────────────────────────
-            # params la list cac dict: [{"key": "size", "label": "Dien tich", "value": "80"}, ...]
-            # Dung label lam ten cot (de doc), prefix "[P] " de phan biet voi base cols
+            # Thêm các trường động từ params (label làm tên cột, prefix [P])
             raw_params = ad.get("params") or []
             for p in raw_params:
                 if not isinstance(p, dict):
@@ -447,7 +443,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 # Neu value la list thi join lai
                 if isinstance(value, list):
                     value = ", ".join(str(v) for v in value)
-                # Khong ghi de neu cot da co gia tri tu base
+                # Không ghi đè nếu cột đã có giá trị từ base
                 if col_name not in row:
                     row[col_name] = value
 
@@ -455,7 +451,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
 
         flattened = [_flatten_ad(ad) for ad in unique_results]
 
-        # ── Step 3: Union toan bo headers (base truoc, params sau) ──────────────
+        # Hợp nhất tất cả các header (base trước, params sau)
         all_param_cols: list[str] = []
         seen_param_cols: set[str] = set()
         for row in flattened:
@@ -466,7 +462,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
 
         final_headers = BASE_COLS + all_param_cols
 
-        # ── Step 4: Export ────────────────────────────────────────────────────────
+        # Xuất ra file CSV
         DataExporter.to_csv(flattened, output_file, headers=final_headers)
 
         elapsed = (datetime.now() - start_time).total_seconds()
