@@ -122,6 +122,26 @@ crawlerai schema https://myspa.com --wait-for "div.results-list"
 ```
 </details>
 
+## 📦 Run Example: Crawl NhaTot.com to CSV
+
+You can run the included example script to crawl NhaTot.com listings and export to CSV:
+
+```bash
+cd examples/nhatot
+python example_crawl_nhatot.py
+```
+
+**Parameters in the script:**
+- `URL`: The listing page to crawl (default: TP.HCM real estate)
+- `FILE_NAME`: Output CSV file name
+- `LIMIT`: Max number of listings to crawl
+- `BATCH`: Number of concurrent tabs per batch
+- `MAX_PAGES`: Max pages to scan
+
+You can edit these parameters at the top of `examples/nhatot/example_crawl_nhatot.py`.
+
+> The script will automatically reveal phone numbers, parse all details, and export a clean CSV ready for analysis.
+
 ---
 
 > **💡 Pro Tip:** Use `gemini/gemini-2.0-flash` as your provider for the best speed/cost ratio in AI mode. It's incredibly fast and well-supported by crawlerAI!
