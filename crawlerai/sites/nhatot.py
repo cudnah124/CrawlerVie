@@ -357,33 +357,121 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             print("\n  ✗ No results to export.")
             return []
 
-        # Flatten and export
-        flattened = []
+        # ── Step 1: Deduplicate theo ad_id ──────────────────────────────────────
+        seen_ids: set = set()
+        unique_results = []
+        dup_count = 0
         for ad in results:
-            flattened.append({
-                "ID Ad":         ad.get("id", {}).get("ad_id"),
-                "Title":         ad.get("title"),
-                "Property Type": ad.get("category", {}).get("category_name"),
-                "Price Value":   ad.get("price", {}).get("price"),
-                "Area (m2)":     ad.get("size", {}).get("size"),
-                "Price_per_m2":  ad.get("price", {}).get("price_million_per_m2"),
-                "Ward":          ad.get("location", {}).get("ward_name"),
-                "District":      ad.get("location", {}).get("area_name"),
-                "City":          ad.get("location", {}).get("region_name"),
-                "Rooms":         ad.get("rooms", {}).get("rooms"),
-                "Toilets":       ad.get("rooms", {}).get("toilets"),
-                "Floors":        ad.get("rooms", {}).get("floors"),
-                "Views":         ad.get("meta", {}).get("view_count"),
-                "Posting Date":  ad.get("posting_date"),
-                "Link":          ad.get("meta", {}).get("ad_url"),
-                "Phone":         ad.get("seller", {}).get("phone"), # Thêm cả phone vì hữu ích
-            })
+            aid = ad.get("id", {}).get("ad_id")
+            if aid and aid in seen_ids:
+                dup_count += 1
+                continue
+            if aid:
+                seen_ids.add(aid)
+            unique_results.append(ad)
 
-        DataExporter.to_csv(flattened, output_file)
+        if dup_count:
+            print(f"  ℹ Removed {dup_count} duplicate ad(s) by ID. Keeping {len(unique_results)} unique.")
+
+        # ── Step 2: Flatten mỗi ad — base fields + dynamic params ───────────────
+        # Các cột cố định luôn xuất hiện đầu bảng
+        BASE_COLS = [
+            "ID Ad", "Title", "Property Type",
+            "Price Value", "Price String", "Price/m2 (trieu)",
+            "Area (m2)", "Width", "Length", "Living Area",
+            "Ward", "District", "City", "Street",
+            "Latitude", "Longitude",
+            "Rooms", "Toilets", "Floors", "House Type",
+            "Legal Document", "Furnishing",
+            "Phone", "Seller", "Company",
+            "Views", "Posting Date", "Link",
+        ]
+
+        def _flatten_ad(ad: dict) -> dict:
+            """Tra ve dict phang: base fields + moi truong tu params."""
+            loc  = ad.get("location", {})
+            sz   = ad.get("size", {})
+            rm   = ad.get("rooms", {})
+            pr   = ad.get("price", {})
+            sl   = ad.get("seller", {})
+            mt   = ad.get("meta", {})
+            cat  = ad.get("category", {})
+            lg   = ad.get("legal", {})
+
+            street_parts = [loc.get("street_number"), loc.get("street_name")]
+            street = " ".join(p for p in street_parts if p) or None
+
+            row = {
+                "ID Ad":           ad.get("id", {}).get("ad_id"),
+                "Title":           ad.get("title"),
+                "Property Type":   cat.get("category_name"),
+                "Price Value":     pr.get("price"),
+                "Price String":    pr.get("price_string"),
+                "Price/m2 (trieu)": pr.get("price_million_per_m2"),
+                "Area (m2)":       sz.get("size"),
+                "Width":           sz.get("width"),
+                "Length":          sz.get("length"),
+                "Living Area":     sz.get("living_size"),
+                "Ward":            loc.get("ward_name"),
+                "District":        loc.get("area_name"),
+                "City":            loc.get("region_name"),
+                "Street":          street,
+                "Latitude":        loc.get("latitude"),
+                "Longitude":       loc.get("longitude"),
+                "Rooms":           rm.get("rooms"),
+                "Toilets":         rm.get("toilets"),
+                "Floors":          rm.get("floors"),
+                "House Type":      rm.get("house_type"),
+                "Legal Document":  lg.get("property_legal_document"),
+                "Furnishing":      rm.get("furnishing_sell"),
+                "Phone":           sl.get("phone"),
+                "Seller":          sl.get("account_name"),
+                "Company":         sl.get("company_ad"),
+                "Views":           mt.get("view_count"),
+                "Posting Date":    ad.get("posting_date"),
+                "Link":            mt.get("ad_url"),
+            }
+
+            # ── Dynamic params ─────────────────────────────────────────────────
+            # params la list cac dict: [{"key": "size", "label": "Dien tich", "value": "80"}, ...]
+            # Dung label lam ten cot (de doc), prefix "[P] " de phan biet voi base cols
+            raw_params = ad.get("params") or []
+            for p in raw_params:
+                if not isinstance(p, dict):
+                    continue
+                label = p.get("label") or p.get("key") or ""
+                if not label:
+                    continue
+                col_name = f"[P] {label}"
+                value = p.get("value")
+                # Neu value la list thi join lai
+                if isinstance(value, list):
+                    value = ", ".join(str(v) for v in value)
+                # Khong ghi de neu cot da co gia tri tu base
+                if col_name not in row:
+                    row[col_name] = value
+
+            return row
+
+        flattened = [_flatten_ad(ad) for ad in unique_results]
+
+        # ── Step 3: Union toan bo headers (base truoc, params sau) ──────────────
+        all_param_cols: list[str] = []
+        seen_param_cols: set[str] = set()
+        for row in flattened:
+            for col in row:
+                if col not in seen_param_cols and col not in BASE_COLS:
+                    seen_param_cols.add(col)
+                    all_param_cols.append(col)
+
+        final_headers = BASE_COLS + all_param_cols
+
+        # ── Step 4: Export ────────────────────────────────────────────────────────
+        DataExporter.to_csv(flattened, output_file, headers=final_headers)
 
         elapsed = (datetime.now() - start_time).total_seconds()
         print(f"\n{'═' * 60}")
-        print(f"  ✓ Saved {len(flattened)} rows → {output_file}")
+        print(f"  ✓ Saved {len(flattened)} rows  ({len(all_param_cols)} dynamic param cols) → {output_file}")
         print(f"  ⏱ Elapsed: {elapsed:.1f}s")
         print(f"{'═' * 60}\n")
         return results
