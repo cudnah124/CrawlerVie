@@ -55,11 +55,23 @@ def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
     except:
         posting_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # Xử lý seller (có thể là key con hoặc nằm trực tiếp trong ad_data)
+    seller_data = ad_data.get("seller", {})
+    account_name = ad_data.get("account_name") or seller_data.get("account_name")
+    avatar = ad_data.get("avatar") or seller_data.get("avatar")
+    company_ad = ad_data.get("company_ad") or seller_data.get("company_ad")
+    
+    # Ưu tiên phone từ scraping (UI), sau đó tới trong ad_data, cuối cùng là trong seller_data
+    final_phone = phone or ad_data.get("phone") or seller_data.get("phone")
+    # Nếu vẫn dính dấu * thì coi như chưa lấy được số thật
+    if final_phone and "*" in str(final_phone):
+        final_phone = None
+
     return {
         "id": {
             "ad_id":      ad_data.get("ad_id"),
             "list_id":    ad_data.get("list_id"),
-            "account_id": ad_data.get("account_id"),
+            "account_id": ad_data.get("account_id") or seller_data.get("account_id"),
         },
         "title":       AntiBotManager.clean_emojis(ad_data.get("subject")),
         "description": ad_data.get("body"),
@@ -99,10 +111,10 @@ def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
             "longitude":     ad_data.get("longitude"),
         },
         "seller": {
-            "account_name": ad_data.get("account_name"),
-            "avatar":       ad_data.get("avatar"),
-            "phone":        phone or ad_data.get("phone"),
-            "company_ad":   ad_data.get("company_ad"),
+            "account_name": account_name,
+            "avatar":       avatar,
+            "phone":        final_phone,
+            "company_ad":   company_ad,
         },
         "media": {
             "images": ad_data.get("images", []),
@@ -186,6 +198,7 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         # Step 3: Reveal phone — click nút "Hiện số" với nhiều selector
         _phone_btn_selectors = [
             "button.b1b6q6wa.primary.r-normal.large.w-bold",
+            "button[data-testid='lead-button']",
             "[class*='LeadButton__showPhoneButton__'] button",
             "[class*='ShowPhoneButton_wrapper__'] button",
             ".InlineShowPhoneButton_linkContact__U_lEr",
@@ -193,31 +206,38 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         ]
         for sel in _phone_btn_selectors:
             try:
-                btn = page.locator(sel).first
-                if await btn.is_visible(timeout=1000):
-                    await btn.click(timeout=3000)
-                    await page.wait_for_timeout(800)
+                btns = page.locator(sel)
+                count = await btns.count()
+                if count > 0:
+                    btn = btns.first
+                    # Thử click — một số button có thể bị ẩn nhưng vẫn clickable hoặc cần force
+                    await btn.click(timeout=3000, force=True)
+                    await page.wait_for_timeout(1000)
                     break
             except:
                 continue
 
-        # Step 3b: JS fallback — tìm tel: link trực tiếp
+        # Step 3b: JS fallback — tìm tel: link hoặc text số điện thoại
         phone = None
         try:
             phone = await page.evaluate(r"""() => {
+                // 1. Tìm thẻ a href="tel:..."
                 const tel = document.querySelector('a[href^="tel:"]');
                 if (tel) {
                     const d = tel.getAttribute('href').replace('tel:', '').replace(/\D/g, '');
-                    if (d.length >= 9 && d.length <= 11 && !d.startsWith('1900')) return d;
+                    if (d.length >= 9 && d.length <= 11) return d;
                 }
+                // 2. Tìm trong các class phổ biến của Chợ Tốt / Nhà Tốt
                 const selectors = [
                     '.b14cwtpv.link.r-normal.small.w-bold.t-link span',
                     '.ShowPhoneButton_phone__18a_n',
                     '.InlineShowPhoneButton_phoneHidden__4KcON',
+                    '[class*="phone"]',
+                    '[class*="phoneNumber"]'
                 ];
                 for (const s of selectors) {
-                    const el = document.querySelector(s);
-                    if (el) {
+                    const elements = document.querySelectorAll(s);
+                    for (const el of elements) {
                         const digits = (el.textContent || '').replace(/\D/g, '');
                         if (digits.length >= 9 && digits.length <= 11 && !digits.startsWith('1900'))
                             return digits;
