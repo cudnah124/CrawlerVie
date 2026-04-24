@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import csv
 import tempfile
 import re
 import shutil
@@ -65,52 +66,7 @@ try:
 except ImportError:
     _stealth_async_fn = None  # type: ignore[assignment]
 
-def parse_vietnamese_time(time_str: str | None) -> datetime | None:
-    """
-    Hàm tiện ích trích xuất datetime từ chuỗi tiếng Việt như '5 phút trước', 'Hôm qua'...
-    """
-    if not time_str:
-        return None
-    time_str = time_str.lower()
-    now = datetime.now()
-    if 'vừa xong' in time_str:
-        return now
-    match = re.search(r'(\d+)\s+phút\s+trước', time_str)
-    if match:
-        return now - timedelta(minutes=int(match.group(1)))
-    match = re.search(r'(\d+)\s+giờ\s+trước', time_str)
-    if match:
-        return now - timedelta(hours=int(match.group(1)))
-    if 'hôm qua' in time_str:
-        return now - timedelta(days=1)
-    match = re.search(r'(\d+)\s+ngày\s+trước', time_str)
-    if match:
-        return now - timedelta(days=int(match.group(1)))
-    match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', time_str)
-    if match:
-        try:
-            from datetime import datetime as dt
-            return dt.strptime(match.group(1), '%d/%m/%Y')
-        except ValueError:
-            pass
-    return None
-    return None
-
-
-def clean_text(text: str | None) -> str:
-    """
-    Xóa các icon, emoji và ký tự đặc biệt gây nhiễu khỏi chuỗi văn bản.
-    """
-    if not text:
-        return ""
-    emoji_pattern = re.compile(
-        "["
-        "\U00010000-\U0010FFFF" # Emojis (non-BMP)
-        "\u2600-\u27BF"         # Miscellaneous symbols
-        "\u2300-\u23FF"         # Technical symbols
-        "]+", flags=re.UNICODE)
-    return emoji_pattern.sub(r'', text).strip()
-
+from crawlerai.utils.antibot import AntiBotManager
 
 # ── Stealth helpers ────────────────────────────────────────────────────────────
 
@@ -126,12 +82,7 @@ def _apply_stealth(page) -> None:
 
 async def _apply_stealth_async(page: AsyncPage) -> None:
     """Apply stealth to an async Playwright page."""
-    if _stealth_async_fn is None:
-        return
-    try:
-        await _stealth_async_fn(page)
-    except Exception:
-        pass
+    await AntiBotManager.apply_stealth(page)
 
 
 # ── Page-level helpers ─────────────────────────────────────────────────────────
@@ -404,7 +355,7 @@ def _build_info(ad_data: dict, phone_text: str | None = None) -> dict:
             "list_id":    ad_data.get("list_id"),
             "account_id": ad_data.get("account_id"),
         },
-        "title":       clean_text(ad_data.get("subject")),
+        "title":       AntiBotManager.clean_emojis(ad_data.get("subject")),
         "description": ad_data.get("body"),
         "category": {
             "category":      ad_data.get("category"),
@@ -767,12 +718,8 @@ class AsyncNhaTotCrawler:
         if self._pw:
             await self._pw.stop()
         
-        # 2. Delete profile directory if exists
-        if self._user_data_dir and os.path.exists(self._user_data_dir):
-            try:
-                shutil.rmtree(self._user_data_dir)
-            except Exception:
-                pass
+        # 2. Xóa sạch Profile cũ qua AntiBotManager
+        await AntiBotManager.clean_profile(self._user_data_dir)
         
         # 3. Start fresh
         await self.start()
