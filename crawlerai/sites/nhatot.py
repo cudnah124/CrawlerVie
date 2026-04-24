@@ -254,7 +254,6 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         ad_data = _find_ad_data(next_data) if next_data else {}
         if not ad_data:
             if next_data:
-                pp = next_data.get("props", {}).get("pageProps", {})
                 print(f"    ✗ ad_data not found: {url.split('/')[-1][:50]}")
             return None
 
