@@ -1045,9 +1045,10 @@ class AsyncNhaTotCrawler:
         self,
         list_url: str,
         max_pages: int = 5,
+        limit: int = 50,
     ) -> list[dict]:
         """
-        Crawl các tin đăng trong vòng 24h từ trang danh sách.
+        Crawl các tin đăng từ trang danh sách với giới hạn số lượng tin.
         Sử dụng chiến thuật reset session cho mỗi trang listing để bypass CF.
         """
         all_filtered_urls = []
@@ -1062,45 +1063,68 @@ class AsyncNhaTotCrawler:
             
             page = await self._new_page()
             try:
-                await page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
-                await page.wait_for_timeout(2000)
-                
-                # Trích xuất links và thời gian hiển thị
-                ads = await page.evaluate(r"""() => {
-                    const results = [];
-                    const items = document.querySelectorAll('a[itemprop="item"]');
-                    items.forEach(a => {
-                        const href = a.getAttribute('href');
-                        if (!href || !href.includes('.htm')) return;
-                        let text = '';
-                        let container = a.closest('li') || a.parentElement;
-                        if (container) text = container.innerText;
-                        results.push({ url: href, innerText: text });
-                    });
-                    return results;
-                }""")
-                
+                ads = []
+                # Thử load trang, nếu 0 links thì retry 1 lần với load kĩ hơn
+                for attempt in range(2):
+                    wait_type = "domcontentloaded" if attempt == 0 else "load"
+                    try:
+                        await page.goto(page_url, wait_until=wait_type, timeout=60000)
+                    except Exception as e:
+                        print(f"[AsyncNhaTotCrawler] Page {current_page} navigation error: {e}")
+                        continue
+                    
+                    # Cuộn 2 lần để đảm bảo tin load đủ
+                    await page.evaluate("window.scrollBy(0, 800)")
+                    await page.wait_for_timeout(2000)
+                    await page.evaluate("window.scrollBy(0, 800)")
+                    await page.wait_for_timeout(2000)
+                    
+                    # Trích xuất links với selector rộng hơn
+                    ads = await page.evaluate(r"""() => {
+                        const results = [];
+                        // Tìm tất cả anchor có thuộc tính itemprop="item" HOẶC chứa link .htm có dạng mua bán
+                        const anchors = Array.from(document.querySelectorAll('a'));
+                        anchors.forEach(a => {
+                            const href = a.getAttribute('href');
+                            if (!href || !href.includes('.htm')) return;
+                            if (!href.includes('/mua-ban-')) return;
+                            
+                            // Tránh lấy nhầm link logo hay link footer
+                            if (href.length < 20) return; 
+
+                            let text = '';
+                            // Ưu tiên lấy text từ container bọc ngoài (li hoặc div chứa tin)
+                            let container = a.closest('li') || a.closest('[class*="AdItem"]') || a.parentElement;
+                            if (container) text = container.innerText;
+                            
+                            // Kiểm tra lại nếu kết quả đã tồn tại
+                            if (!results.find(r => r.url === href)) {
+                                results.push({ url: href, innerText: text });
+                            }
+                        });
+                        return results;
+                    }""")
+                    
+                    if len(ads) > 0:
+                        break
+                    print(f"[AsyncNhaTotCrawler] Page {current_page} attempt {attempt+1}: 0 ads found. Retrying...")
+
                 page_found = 0
                 for ad in ads:
                     url = urljoin(list_url, ad['url'])
-                    # Tìm chuỗi thời gian trong innerText
-                    time_match = re.search(r'(phút trước|giờ trước|ngày trước|Hôm qua|vừa xong)', ad['innerText'], re.I)
-                    time_text = time_match.group(0) if time_match else ""
-                    
-                    post_time = parse_vietnamese_time(time_text)
-                    if post_time and post_time >= datetime.now() - timedelta(days=1):
-                        if url not in all_filtered_urls:
-                            all_filtered_urls.append(url)
-                            page_found += 1
-                    elif not post_time and current_page == 1:
+                    if url not in all_filtered_urls:
                         all_filtered_urls.append(url)
                         page_found += 1
-                    elif post_time and post_time < datetime.now() - timedelta(days=1):
+                        
+                    # Dừng nếu đã lấy đủ số lượng yêu cầu (cộng thêm 10% để trừ hao)
+                    if len(all_filtered_urls) >= limit:
                         keep_paging = False
+                        break
                 
-                print(f"[AsyncNhaTotCrawler] Page {current_page}: Extracted {page_found} links.")
-                if page_found == 0 and current_page > 1:
-                    keep_paging = False
+                print(f"[AsyncNhaTotCrawler] Page {current_page}: Found {page_found} links. Total: {len(all_filtered_urls)}")
+                if len(ads) == 0:
+                     print(f"[AsyncNhaTotCrawler] Warning: Page {current_page} returned 0 ads.")
+                     keep_paging = False
             except Exception as e:
                 print(f"[AsyncNhaTotCrawler] Error: {e}")
                 break
@@ -1108,6 +1132,5 @@ class AsyncNhaTotCrawler:
                 await page.close()
                 current_page += 1
         
-        # 2. Scrape chi tiết theo Batch sạch
         return await self.scrape_many_batched(all_filtered_urls)
 
