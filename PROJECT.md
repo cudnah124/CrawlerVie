@@ -29,10 +29,9 @@ Dưới đây là các hàm chính được export trực tiếp từ package `c
 - **Mô tả**: Sử dụng LLM để phân tích cấu trúc HTML của một URL và tự động sinh ra file JSON chứa các bộ chọn CSS tối ưu.
 
 ### 2.4 🏠 Scraper chuyên biệt NhaTot
-- **Hàm**: `crawlerai.sites.nhatot.scrape_ad()`, `scrape_listings()`
-- **Tính năng nâng cao**:
     - **📞 Reveal Phone**: Click và giải mã số điện thoại ẩn.
     - **🔍 Deep Extraction**: Parse trực tiếp từ `__NEXT_DATA__` của trang web.
+    - **🖼️ Image Downloader**: Tải toàn bộ ảnh bất động bộ vào thư mục cục bộ.
 
 ---
 
@@ -46,6 +45,7 @@ Dưới đây là các hàm chính được export trực tiếp từ package `c
 | `crawlerai/sites/` | **Site Specific** | Các scraper tùy biến cho website phức tạp (VD: NhaTot). |
 | `crawlerai/schema_gen/` | **Utility** | Công cụ sinh Schema tự động bằng AI. |
 | `crawlerai/exporters/` | **Output** | Xuất dữ liệu ra CSV (Excel-friendly) hoặc JSON. |
+| `crawlerai/utils/` | **Helpers** | Các tiện ích bổ trợ: Anti-bot, Exporter, Media Downloader. |
 | `crawlerai/cli/` | **CLI Interface** | Xử lý các lệnh từ command line (llm, schema, gen, nhatot). |
 | `crawlerai/__init__.py` | **Public API** | Đầu mối export các hàm chính để sử dụng như một thư viện. |
 | `schemas/` | **Knowledge** | Nơi lưu trữ các schema JSON đã tạo. |
@@ -79,5 +79,5 @@ Dự án hiện hỗ trợ lệnh `crawlerai` trực tiếp (sau khi cài đặt
 
 ---
 <div align="center">
-Tài liệu cập nhật ngày: 23/04/2026.
+Tài liệu cập nhật ngày: 09/05/2026.
 </div>

@@ -74,11 +74,9 @@ crawlerai schema https://news.ycombinator.com --schema schemas/hackernews_css.js
 - **Schema-Gen Utility**: Use the `schema-gen` mode to let AI write the CSS selectors once, then run them indefinitely for free.
 </details>
 
-<details>
-<summary>🏠 <strong>Specialized: NhaTot.com Scraper</strong></summary>
-
 - **Phone Reveal Technology**: Automatically clicks and interacts with "Show Phone" buttons using a multi-strategy approach.
 - ****NEXT_DATA** Parsing**: Directly extracts deeply nested JSON objects from the site's internal state for 100% accuracy.
+- **Async Image Downloading**: Automatically downloads all property images into organized folders named by Ad ID.
 - **Captcha Awareness**: Detects and asks for manual intervention when Cloudflare checks appear.
 </details>
 
@@ -140,13 +138,13 @@ cd examples/nhatot
 python example_crawl_nhatot.py
 ```
 
-**Parameters in the script:**
-
 - `URL`: The listing page to crawl (default: TP.HCM real estate)
 - `FILE_NAME`: Output CSV file name
 - `LIMIT`: Max number of listings to crawl
 - `BATCH`: Number of concurrent tabs per batch
 - `MAX_PAGES`: Max pages to scan
+- `DOWNLOAD_IMAGES`: Set to `True` to download all listing images
+- `IMAGE_DIR`: Directory where images will be saved (e.g., `./nhatot_images`)
 
 You can edit these parameters at the top of `examples/nhatot/example_crawl_nhatot.py`.
 
