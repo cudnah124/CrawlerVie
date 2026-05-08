@@ -20,10 +20,8 @@ class MediaDownloader:
                     await f.close()
                     return True
                 else:
-                    print(f"    [Downloader] Failed: {url} (Status: {response.status})")
                     return False
-        except Exception as e:
-            print(f"    [Downloader] Error: {url} - {e}")
+        except Exception:
             return False
 
     @staticmethod
@@ -44,14 +42,12 @@ class MediaDownloader:
         async with aiohttp.ClientSession() as session:
             async def _bounded_download(url):
                 async with sem:
-                    # Lấy tên file từ URL hoặc hash nếu cần
                     filename = os.path.basename(urlparse(url).path)
                     if not filename or "." not in filename:
                         filename = f"img_{hash(url)}.jpg"
                     
                     save_path = os.path.join(output_dir, filename)
                     
-                    # Nếu file đã tồn tại thì bỏ qua (hoặc có thể thêm logic check size/hash)
                     if os.path.exists(save_path):
                         return save_path
                         

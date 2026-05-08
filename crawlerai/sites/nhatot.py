@@ -22,17 +22,14 @@ def _find_ad_data(next_data: dict) -> dict | None:
         pp = next_data.get("props", {}).get("pageProps", {})
         adview = pp.get("initialState", {}).get("adView", {})
 
-        # Đường dẫn chính xác: initialState -> adView -> adInfo
         ad_info = adview.get("adInfo", {})
         if isinstance(ad_info, dict):
-            # adInfo có thể chứa 'ad' hoặc chính là ad object
             if ad_info.get("ad_id"):
                 return ad_info
             ad = ad_info.get("ad")
             if isinstance(ad, dict) and ad.get("ad_id"):
                 return ad
 
-        # Fallback: tìm trong các key khác của pageProps
         for key in ["adData", "ad", "data"]:
             val = pp.get(key)
             if isinstance(val, dict) and val.get("ad_id"):
@@ -51,15 +48,12 @@ def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
     except Exception:
         posting_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Xử lý seller
     seller_data = ad_data.get("seller", {})
     account_name = ad_data.get("account_name") or seller_data.get("account_name")
     avatar = ad_data.get("avatar") or seller_data.get("avatar")
     company_ad = ad_data.get("company_ad") or seller_data.get("company_ad")
     
-    # Ưu tiên phone lấy được từ scraping, ad_data, hoặc seller_data
     final_phone = phone or ad_data.get("phone") or seller_data.get("phone")
-    # Nếu vẫn có dấu * thì coi như chưa lấy được số thật
     if final_phone and "*" in str(final_phone):
         final_phone = None
 
@@ -175,23 +169,14 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
             await page.wait_for_timeout(1000)
 
     async def _parse_page(self, page: AsyncPage, url: str) -> dict | None:
-        # Điều hướng đến trang
         try:
             await page.goto(url, wait_until="load", timeout=self.timeout)
-        except Exception as e:
-            print(f"    ✗ goto failed: {e}")
+        except Exception:
             return None
 
-        # Đợi __NEXT_DATA__ xuất hiện
         if not await self._wait_for_next_data(page):
-            try:
-                title = await page.title()
-            except Exception:
-                title = "?"
-            print(f"    ✗ __NEXT_DATA__ not found — title: '{title}'")
             return None
 
-        # Thử click các nút hiện số điện thoại
         _phone_btn_selectors = [
             "button.b1b6q6wa.primary.r-normal.large.w-bold",
             "button[data-testid='lead-button']",
@@ -203,27 +188,21 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         for sel in _phone_btn_selectors:
             try:
                 btns = page.locator(sel)
-                count = await btns.count()
-                if count > 0:
-                    btn = btns.first
-                    # Thử click — một số button có thể bị ẩn nhưng vẫn clickable hoặc cần force
-                    await btn.click(timeout=3000, force=True)
+                if await btns.count() > 0:
+                    await btns.first.click(timeout=3000, force=True)
                     await page.wait_for_timeout(1000)
                     break
             except Exception:
                 continue
 
-        # Nếu không được, thử lấy số điện thoại qua JS
         phone = None
         try:
             phone = await page.evaluate(r"""() => {
-                // 1. Tìm thẻ a href="tel:..."
                 const tel = document.querySelector('a[href^="tel:"]');
                 if (tel) {
                     const d = tel.getAttribute('href').replace('tel:', '').replace(/\D/g, '');
                     if (d.length >= 9 && d.length <= 11) return d;
                 }
-                // 2. Tìm trong các class phổ biến của Chợ Tốt / Nhà Tốt
                 const selectors = [
                     '.b14cwtpv.link.r-normal.small.w-bold.t-link span',
                     '.ShowPhoneButton_phone__18a_n',
@@ -244,18 +223,13 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         except Exception:
             pass
 
-        # Lấy __NEXT_DATA__ từ trang
         try:
             next_data = await page.evaluate("() => window.__NEXT_DATA__ || null")
-        except Exception as e:
-            print(f"    ✗ evaluate failed: {e}")
+        except Exception:
             return None
 
-        # Parse ad_data
         ad_data = _find_ad_data(next_data) if next_data else {}
         if not ad_data:
-            if next_data:
-                print(f"    ✗ ad_data not found: {url.split('/')[-1][:50]}")
             return None
 
         return _build_info(ad_data, phone, url)
@@ -299,14 +273,12 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 status = "✓" if r else "✗"
                 _log_item(i + j + 1, len(urls), title, status)
 
-            # Download images if requested
             if download_images:
                 for r in results:
                     ad_id = r.get("id", {}).get("ad_id")
                     img_urls = r.get("media", {}).get("images", [])
                     if ad_id and img_urls:
                         ad_image_dir = os.path.join(image_dir, str(ad_id))
-                        # Tải ảnh bất đồng bộ
                         await MediaDownloader.download_batch(img_urls, ad_image_dir)
 
             if i + batch_size < len(urls):
@@ -338,15 +310,14 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 )
                 for h in hrefs:
                     if h and ".htm" in h and "/mua-ban" in h:
-                        # Strip fragment (#px=...) trước khi lưu
                         full = _strip_fragment(urljoin(list_url, h))
                         if full not in all_urls:
                             all_urls.append(full)
                             page_found += 1
                     if len(all_urls) >= limit:
                         break
-            except Exception as e:
-                print(f"  ✗ Page {current_page} error: {e}")
+            except Exception:
+                pass
             finally:
                 await page.close()
                 _log_page(current_page, page_found, len(all_urls), limit)
@@ -371,10 +342,8 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                                                    download_images=download_images, image_dir=image_dir)
 
         if not results:
-            print("\n  ✗ No results to export.")
             return []
 
-        # Loại bỏ các tin trùng ad_id
         seen_ids: set = set()
         unique_results = []
         dup_count = 0
@@ -387,10 +356,6 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 seen_ids.add(aid)
             unique_results.append(ad)
 
-        if dup_count:
-            print(f"  ℹ Removed {dup_count} duplicate ad(s) by ID. Keeping {len(unique_results)} unique.")
-
-        # Chuyển mỗi ad thành dict phẳng: base fields + dynamic params
         BASE_COLS = [
             "ID Ad", "Title", "Property Type",
             "Price Value", "Price String", "Price/m2 (trieu)",
