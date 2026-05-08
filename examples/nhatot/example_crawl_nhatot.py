@@ -11,12 +11,12 @@ from crawlerai.sites.nhatot import AsyncNhaTotCrawler
 async def main():
     # Cấu hình tham số 
     URL = "https://www.nhatot.com/mua-ban-bat-dong-san-tp-ho-chi-minh"
-    FILE_NAME = "nhatot_full_data.csv"
+    FILE_NAME = "./nhatot_full_data.csv"
     LIMIT = 2
     BATCH = 2
     MAX_PAGES = 1
     DOWNLOAD_IMAGES = True
-    IMAGE_DIR = "nhatot_images"
+    IMAGE_DIR = "./nhatot_images"
     # -------------------------------
 
     profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".browser_profile", "nhatot_master")
