@@ -27,6 +27,7 @@
 ## 🚀 Quick Start
 
 1. **Clone and Install**:
+
 ```bash
 git clone https://github.com/your-repo/crawlerAI.git
 cd crawlerAI
@@ -39,12 +40,14 @@ playwright install chromium
 ```
 
 2. **Setup Environment**:
+
 ```bash
 cp .env.example .env
 # Add your OPENAI_API_KEY or GEMINI_API_KEY
 ```
 
 3. **Run your first crawl**:
+
 ```bash
 # AI Mode: Just describe what you want
 crawlerai llm https://news.ycombinator.com --instruction "Extract titles and URLs of all stories"
@@ -75,7 +78,7 @@ crawlerai schema https://news.ycombinator.com --schema schemas/hackernews_css.js
 <summary>🏠 <strong>Specialized: NhaTot.com Scraper</strong></summary>
 
 - **Phone Reveal Technology**: Automatically clicks and interacts with "Show Phone" buttons using a multi-strategy approach.
-- **__NEXT_DATA__ Parsing**: Directly extracts deeply nested JSON objects from the site's internal state for 100% accuracy.
+- ****NEXT_DATA** Parsing**: Directly extracts deeply nested JSON objects from the site's internal state for 100% accuracy.
 - **Captcha Awareness**: Detects and asks for manual intervention when Cloudflare checks appear.
 </details>
 
@@ -93,17 +96,20 @@ crawlerai schema https://news.ycombinator.com --schema schemas/hackernews_css.js
 <summary>📝 <strong>Generate a CSS Schema automatically</strong></summary>
 
 Dont want to write JSON selectors? Let the LLM do it once:
+
 ```bash
 crawlerai gen https://example.com/listings \
   --query "All product names, prices and image links" \
   --save-to schemas/my_new_site.json
 ```
+
 </details>
 
 <details>
 <summary>🏠 <strong>Scraping Real Estate (NhaTot)</strong></summary>
 
 Get all details including the hidden seller phone number:
+
 ```bash
 # Single ad
 crawlerai nhatot https://www.nhatot.com/.../ad_id.htm
@@ -111,15 +117,18 @@ crawlerai nhatot https://www.nhatot.com/.../ad_id.htm
 # Listing page (scrapes multiple)
 crawlerai nhatot-list https://www.nhatot.com/mua-ban-bat-dong-san --limit 20
 ```
+
 </details>
 
 <details>
 <summary>🛠️ <strong>Wait for dynamic content (SPA)</strong></summary>
 
 For React/Vue sites that need time to render:
+
 ```bash
 crawlerai schema https://myspa.com --wait-for "div.results-list"
 ```
+
 </details>
 
 ## 📦 Run Example: Crawl NhaTot.com to CSV
@@ -132,6 +141,7 @@ python example_crawl_nhatot.py
 ```
 
 **Parameters in the script:**
+
 - `URL`: The listing page to crawl (default: TP.HCM real estate)
 - `FILE_NAME`: Output CSV file name
 - `LIMIT`: Max number of listings to crawl

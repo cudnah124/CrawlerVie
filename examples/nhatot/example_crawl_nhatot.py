@@ -12,9 +12,11 @@ async def main():
     # Cấu hình tham số 
     URL = "https://www.nhatot.com/mua-ban-bat-dong-san-tp-ho-chi-minh"
     FILE_NAME = "nhatot_full_data.csv"
-    LIMIT = 500
-    BATCH = 10
-    MAX_PAGES = 30
+    LIMIT = 2
+    BATCH = 2
+    MAX_PAGES = 1
+    DOWNLOAD_IMAGES = True
+    IMAGE_DIR = "nhatot_images"
     # -------------------------------
 
     profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".browser_profile", "nhatot_master")
@@ -25,7 +27,9 @@ async def main():
             output_file=FILE_NAME, 
             limit=LIMIT, 
             batch_size=BATCH, 
-            max_pages=MAX_PAGES
+            max_pages=MAX_PAGES,
+            download_images=DOWNLOAD_IMAGES,
+            image_dir=IMAGE_DIR
         )
 
 if __name__ == "__main__":

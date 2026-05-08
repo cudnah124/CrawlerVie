@@ -6,6 +6,7 @@ from playwright.async_api import Page as AsyncPage
 from crawlerai.core.engine import BaseAsyncCrawler
 from crawlerai.utils.antibot import AntiBotManager
 from crawlerai.utils.exporter import DataExporter
+from crawlerai.utils.downloader import MediaDownloader
 
 
 def _strip_fragment(url: str) -> str:
@@ -132,19 +133,19 @@ def _build_info(ad_data: dict, phone: str | None, ad_url: str) -> dict:
 
 def _bar(done: int, total: int, width: int = 30) -> str:
     filled = int(width * done / total) if total else 0
-    return f"[{'█' * filled}{'░' * (width - filled)}]"
+    return f"[{'#' * filled}{'-' * (width - filled)}]"
 
 
 def _log_phase(title: str):
-    print(f"\n{'═' * 60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'═' * 60}")
+    print(f"{'=' * 60}")
 
 
 def _log_page(page: int, found: int, total: int, limit: int):
     pct = min(100, int(total / limit * 100))
     bar = _bar(total, limit)
-    print(f"  Page {page:>2} │ +{found:>3} links │ {bar} {total:>3}/{limit} ({pct}%)")
+    print(f"  Page {page:>2} | +{found:>3} links | {bar} {total:>3}/{limit} ({pct}%)")
 
 
 def _log_batch(batch_idx: int, total_batches: int, batch_size: int, scraped: int, total_urls: int):
@@ -152,8 +153,8 @@ def _log_batch(batch_idx: int, total_batches: int, batch_size: int, scraped: int
     print(f"  Batch {batch_idx:>2}/{total_batches} {bar}  scraped={scraped:>3}/{total_urls}")
 
 
-def _log_item(idx: int, total: int, title: str, status: str = "✓"):
-    short = (title[:45] + "…") if title and len(title) > 46 else (title or "—")
+def _log_item(idx: int, total: int, title: str, status: str = "v"):
+    short = (title[:45] + "...") if title and len(title) > 46 else (title or "-")
     print(f"    [{idx:>3}/{total}] {status}  {short}")
 
 
@@ -273,7 +274,8 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         results = await asyncio.gather(*[_bounded(u) for u in urls])
         return [r for r in results if r]
 
-    async def scrape_many_batched(self, urls: list[str], batch_size: int = 5) -> list[dict]:
+    async def scrape_many_batched(self, urls: list[str], batch_size: int = 5, 
+                                 download_images: bool = False, image_dir: str = "downloads") -> list[dict]:
         if not urls:
             return []
 
@@ -296,15 +298,26 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 status = "✓" if r else "✗"
                 _log_item(i + j + 1, len(urls), title, status)
 
+            # Download images if requested
+            if download_images:
+                for r in results:
+                    ad_id = r.get("id", {}).get("ad_id")
+                    img_urls = r.get("media", {}).get("images", [])
+                    if ad_id and img_urls:
+                        ad_image_dir = os.path.join(image_dir, str(ad_id))
+                        # Tải ảnh bất đồng bộ
+                        await MediaDownloader.download_batch(img_urls, ad_image_dir)
+
             if i + batch_size < len(urls):
                 await asyncio.sleep(2)
 
         success = len(all_results)
         pct = int(success / len(urls) * 100) if urls else 0
-        print(f"\n  Done  │ {success}/{len(urls)} scraped ({pct}%)")
+        print(f"\n  Done  | {success}/{len(urls)} scraped ({pct}%)")
         return all_results
 
-    async def scrape_listings_today(self, list_url: str, max_pages: int = 5, limit: int = 50, batch_size: int = 5) -> list[dict]:
+    async def scrape_listings_today(self, list_url: str, max_pages: int = 5, limit: int = 50, 
+                                   batch_size: int = 5, download_images: bool = False, image_dir: str = "downloads") -> list[dict]:
         _log_phase(f"PHASE 1 — Collecting Links  (limit={limit}, max_pages={max_pages})")
 
         all_urls = []
@@ -338,19 +351,23 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
                 _log_page(current_page, page_found, len(all_urls), limit)
                 current_page += 1
 
-        print(f"\n  Done  │ {len(all_urls)} URLs collected")
-        return await self.scrape_many_batched(all_urls, batch_size=batch_size)
+        print(f"\n  Done  | {len(all_urls)} URLs collected")
+        return await self.scrape_many_batched(all_urls, batch_size=batch_size, 
+                                              download_images=download_images, image_dir=image_dir)
 
     async def crawl_to_csv(self, list_url: str, output_file: str = "nhatot_exported.csv",
-                           max_pages: int = 5, limit: int = 50, batch_size: int = 5):
+                           max_pages: int = 5, limit: int = 50, batch_size: int = 5,
+                           download_images: bool = False, image_dir: str = "downloads"):
         start_time = datetime.now()
-        print(f"\n{'╔' + '═' * 58 + '╗'}")
-        print(f"║  NhaTot Crawler  │  {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):<36}║")
-        print(f"║  URL: {list_url[:50]:<51}║")
-        print(f"║  Limit={limit}  Batch={batch_size}  MaxPages={max_pages:<27}║")
-        print(f"{'╚' + '═' * 58 + '╝'}")
+        print(f"\n{'+' + '=' * 58 + '+'}")
+        print(f"|  NhaTot Crawler  |  {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):<36}|")
+        print(f"|  URL: {list_url[:50]:<51}|")
+        print(f"|  Limit={limit}  Batch={batch_size}  MaxPages={max_pages:<27}|")
+        print(f"|  Download Images: {'ON' if download_images else 'OFF':<41}|")
+        print(f"{'+' + '=' * 58 + '+'}")
 
-        results = await self.scrape_listings_today(list_url, max_pages, limit, batch_size)
+        results = await self.scrape_listings_today(list_url, max_pages, limit, batch_size, 
+                                                   download_images=download_images, image_dir=image_dir)
 
         if not results:
             print("\n  ✗ No results to export.")
@@ -466,8 +483,8 @@ class AsyncNhaTotCrawler(BaseAsyncCrawler):
         DataExporter.to_csv(flattened, output_file, headers=final_headers)
 
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"\n{'═' * 60}")
-        print(f"  ✓ Saved {len(flattened)} rows  ({len(all_param_cols)} dynamic param cols) → {output_file}")
-        print(f"  ⏱ Elapsed: {elapsed:.1f}s")
-        print(f"{'═' * 60}\n")
+        print(f"\n{'=' * 60}")
+        print(f"  v Saved {len(flattened)} rows  ({len(all_param_cols)} dynamic param cols) -> {output_file}")
+        print(f"  t Elapsed: {elapsed:.1f}s")
+        print(f"{'=' * 60}\n")
         return results
