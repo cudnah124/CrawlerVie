@@ -22,8 +22,8 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from datetime import date, datetime
 from pathlib import Path
-from datetime import datetime
 from urllib.parse import urlparse
 
 try:
@@ -39,6 +39,7 @@ except ImportError:
 from crawlerai import crawl_llm, crawl_schema, generate_schema
 from crawlerai.exporters.csv_exporter import export_to_csv
 from crawlerai.config.settings import get_default_provider
+from crawlerai.sites.nhatot import AsyncNhaTotCrawler
 
 
 # ── Shared options ─────────────────────────────────────────────────────────────
@@ -174,6 +175,28 @@ def cmd_gen(url, query, save_to, provider, api_key, output, antibot, proxy, wait
 
 # ── nhatot commands ────────────────────────────────────────────────────────────
 
+async def _do_nhatot_crawl(url, limit, batch_size, max_pages, output, download_images, image_dir, headless, from_date, to_date):
+    from pathlib import Path
+    profile_dir = Path("examples/nhatot/.browser_profile/cli_crawl")
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    async with AsyncNhaTotCrawler(headless=headless, user_data_dir=str(profile_dir), timeout=60000) as crawler:
+        results = await crawler.crawl_to_csv(
+            list_url=url,
+            output_file=output,
+            limit=limit,
+            batch_size=batch_size,
+            max_pages=max_pages,
+            download_images=download_images,
+            image_dir=image_dir,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    if not results:
+        click.echo("No ads scraped.", err=True)
+        sys.exit(1)
+    click.echo(f"Done — {len(results)} ads saved")
+
+
 @cli.command("nhatot")
 @_url_arg
 @click.option("--output", "-o", default=None, help="Output JSON path.")
@@ -227,7 +250,35 @@ def cmd_nhatot_list(url, limit, output_dir):
         click.echo(f"  Saved → {out_dir / fname}")
 
 
+@cli.command("nhatot-crawl")
+@click.argument("url", required=False)
+@click.option("--limit", default=100, show_default=True, help="Max ads to scrape")
+@click.option("--batch-size", default=5, show_default=True, help="Concurrent batch size")
+@click.option("--max-pages", default=20, show_default=True, help="Max listing pages to scan")
+@click.option("--output", "-o", default=None, help="CSV output path (default: storages/<today>/nhatot_<today>.csv)")
+@click.option("--download-images", is_flag=True, help="Download images to local")
+@click.option("--image-dir", default=None, help="Image save dir (default: storages/<today>/images/)")
+@click.option("--visible", is_flag=True, help="Show browser window")
+@click.option("--from-date", default=None, type=str, help="L?y tin t? ngày (YYYY-MM-DD)")
+@click.option("--to-date", default=None, type=str, help="L?y tin d?n ngày (YYYY-MM-DD)")
+def cmd_nhatot_crawl(url, limit, batch_size, max_pages, output, download_images, image_dir, visible, from_date, to_date):
+    """Crawl NhaTot listings and export to CSV (auto-storage in storage/<today>/)."""
+    fd = _parse_date_option(from_date)
+    td = _parse_date_option(to_date)
+    asyncio.run(_do_nhatot_crawl(url, limit, batch_size, max_pages, output, download_images, image_dir, headless=not visible, from_date=fd, to_date=td))
+
+
 # ── helpers ────────────────────────────────────────────────────────────────────
+
+def _parse_date_option(value: str | None) -> date | None:
+    if value is None:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        click.echo(f"Invalid date format: {value!r}. Use YYYY-MM-DD.", err=True)
+        sys.exit(1)
+
 
 def _load_json(path: str) -> dict:
     p = Path(path)

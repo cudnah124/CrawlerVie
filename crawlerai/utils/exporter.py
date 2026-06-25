@@ -1,5 +1,6 @@
 import csv
 import json
+import re
 
 class DataExporter:
     """
@@ -21,7 +22,12 @@ class DataExporter:
                 writer = csv.writer(f)
                 writer.writerow(headers)
                 for item in data:
-                    row = [item.get(h) for h in headers]
+                    row = []
+                    for h in headers:
+                        val = item.get(h)
+                        if isinstance(val, str):
+                            val = re.sub(r'\s+', ' ', val).strip()
+                        row.append(val)
                     writer.writerow(row)
             return True
         except Exception as e:
